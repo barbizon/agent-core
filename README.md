@@ -114,7 +114,7 @@ Command-line flags override them.
 | `--max-steps N` | Overrides `AGENT_MAX_STEPS`. |
 | `--allow-write` | Lets the agent *request* **write** tools. Each call still needs your approval. |
 | `--allow-dangerous` | Lets the agent *request* **dangerous** tools. Each call still needs your approval. |
-| `-d`, `--debug` | Prints every step of the flow in frames. See [Debug mode](#debug-mode). |
+| `-d`, `--debug` | Follows each message through the pipeline as numbered boxes. See [Debug mode](#debug-mode). |
 | `--env-file PATH` | Loads a different env file (default `.env`). |
 
 Without flags, a session is **read-only**: write and dangerous tools are
@@ -167,35 +167,38 @@ rather than work around it.
 
 ### Debug mode
 
-Run `.venv/bin/agent-core -d` to see what really happens on each message.
-Every step is printed in a box:
+Run `.venv/bin/agent-core -d` to follow each message through the whole
+pipeline. Every message starts a `REQUEST #n` banner, and each hop is a
+numbered box showing **who hands what to whom**:
+
+| Point | Hop | What you see |
+|---|---|---|
+| ① | CLI → Agent | Your message |
+| ② | Agent | The history that will be sent to the model, one line per message |
+| ③ | Agent → adapter | Which step this is (out of the max) and which tools are offered |
+| ④ | adapter → model | The exact request: the `codex exec` command plus the full prompt (or the OpenAI request JSON) |
+| ⑤ | model → adapter | The raw reply: Codex's event stream, token usage, time, exit code |
+| ⑥ | adapter → Agent | The parsed decision: `final_answer` or `tool_call` |
+| ⑦ | Agent → CLI | The final answer, the number of steps and the total time |
+
+When the model asks for a tool, points are added between ⑥ and the next
+model call:
 
 ```
-┌─ agent.started ──────────────────────────────┐
-│ message: say hi in 3 words                   │
-└──────────────────────────────────────────────┘
-┌─ MODEL INPUT · codex exec ───────────────────┐
-│ $ codex exec --json --sandbox read-only ...  │
-│ --- prompt (sent on stdin) ---               │
-│ (the full prompt: rules, tools, chat so far) │
-└──────────────────────────────────────────────┘
-┌─ MODEL OUTPUT · codex (6.6s) ────────────────┐
-│ { "type": "final_answer", "answer": ... }    │
-└──────────────────────────────────────────────┘
+Agent → Gateway · tool call          echo {"text": "ping"}
+Gateway · safety checks for 'echo'   → requested … ✓ permission … ✓ done (12 ms)
+Gateway → Agent · tool result        exactly what is added to the history
 ```
 
-| Border color | Box |
-|---|---|
-| Blue | Model input: the exact prompt or request sent to the model |
-| Green | Model output: the raw reply and how long it took |
-| Yellow | Tool result: exactly what goes back to the model |
-| Gray | Steps (the same events as the audit log) |
-| Red | Failed, denied, rejected or invalid steps |
+The loop then goes back to ② for the next step, with a longer history.
+Point ② shows that the **whole conversation is sent again on every call**:
+the model has no memory.
 
-Notice that the **MODEL INPUT** box holds the whole conversation every
-time: the model has no memory, so the full history is resent on each call.
-Values under secret-looking keys are hidden, as in the audit log.
-Colors are off when the output isn't a terminal, or when `NO_COLOR` is set.
+Border colors: cyan = your input, blue = going to the model, green = coming
+from the model, yellow = tools, gray = internal state and safety checks,
+magenta = final answer, red = anything that failed. Values under
+secret-looking keys are hidden, as in the audit log. Colors are off when the
+output isn't a terminal, or when `NO_COLOR` is set.
 
 ### Errors in the chat
 
@@ -450,7 +453,7 @@ The tests make **no network calls** and never start `codex`. They use test-only 
 | `test_registry.py` | Definition rules, schema export, argument validation |
 | `test_safety_primitives.py` | Policy, single-use tokens, retry rules, redaction, truncation, approvers |
 | `test_codex_model.py` | Codex flags (sandbox/isolation), prompt building, decision parsing, failures (using recorded output, no real `codex` calls) |
-| `test_debug.py` | Frame drawing, wrapping, redaction, and full-flow tracing for the agent and Codex |
+| `test_debug.py` | Frame drawing, point numbering, collected safety checks, redaction, and the full pipeline trace (agent, gateway, Codex) |
 | `test_config.py` | Env loading, backend selection and validation |
 
 ---
@@ -470,7 +473,7 @@ agent-core/
 │   │   ├── codex_model.py       # CodexCLIModel (ChatGPT subscription)
 │   │   └── openai_model.py      # OpenAIChatModel (API key)
 │   ├── gateway.py               # ToolGateway: the safety pipeline
-│   ├── debug.py                 # Tracer: framed debug output (-d)
+│   ├── debug.py                 # Tracer: numbered pipeline trace (-d)
 │   ├── config.py                # Settings from env/.env
 │   ├── permissions.py           # RiskLevel, PermissionPolicy
 │   ├── approvals.py             # Terminal / DenyAll approval providers

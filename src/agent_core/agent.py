@@ -7,11 +7,12 @@ framed as untrusted data in the system prompt.
 """
 
 import json
+import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
 from agent_core.audit import AuditLogger, new_id
-from agent_core.debug import Tracer
+from agent_core.debug import Tracer, summarize_messages
 from agent_core.errors import StepLimitExceeded
 from agent_core.gateway import ToolGateway
 from agent_core.llm import ChatModel, ToolCall
@@ -75,17 +76,31 @@ class Agent:
     def send(self, user_message: str) -> str:
         """Send one user message and return the final answer (tools may run in between)."""
         run_id = new_id()
+        started = time.monotonic()
 
         def audit(event_type: str, **details: Any) -> None:
-            """Record a step in the audit log (and show it in debug mode)."""
-            self._audit(run_id, event_type, details)
+            """Record a step in the audit log."""
+            self.audit_logger.record(run_id, event_type, details)
 
+        self.tracer.begin_request(user_message)
+        self.tracer.point("CLI → Agent · user input", user_message, "user")
         audit("agent.started", message=user_message)
         self.messages.append({"role": "user", "content": user_message})
         tools = self.registry.openai_schemas()
+        adapter = getattr(self.model, "label", type(self.model).__name__)
 
         try:
             for step in range(1, self.max_steps + 1):
+                self.tracer.point(
+                    f"Agent · history sent to model ({len(self.messages)} messages)",
+                    summarize_messages(self.messages),
+                )
+                self.tracer.point(
+                    f"Agent → {adapter} · step {step} of max {self.max_steps}",
+                    "tools offered: "
+                    + (", ".join(t["function"]["name"] for t in tools) or "(none)"),
+                    "input",
+                )
                 audit("model.requested", step=step)
                 response = self.model.complete(self.messages, tools)
                 self.messages.append(response.to_message())
@@ -97,14 +112,33 @@ class Agent:
 
                 if not response.tool_calls:
                     answer = response.text or ""
+                    self.tracer.point("Adapter → Agent · decision", f"final_answer: {answer}", "output")
                     audit("agent.finished", steps=step)
+                    self.tracer.point(
+                        "Agent → CLI · final answer",
+                        f"{answer}\n\n({step} step(s), {time.monotonic() - started:.1f}s total)",
+                        "answer",
+                    )
                     return answer
+
+                self.tracer.point(
+                    "Adapter → Agent · decision",
+                    "\n".join(
+                        f"tool_call: {c.name} {c.arguments_json}   (id {c.id})"
+                        for c in response.tool_calls
+                    ),
+                    "output",
+                )
 
                 # Every tool_call_id must get a tool message, or the next API call fails.
                 for call in response.tool_calls:
                     result = self._handle_tool_call(run_id, call)
                     content = result.to_model_content(self.max_tool_result_chars)
-                    self.tracer.frame(f"TOOL RESULT → model · {call.name}", content, "tool")
+                    self.tracer.point(
+                        f"Gateway → Agent · tool result (added to history for the model)",
+                        content,
+                        "tool" if result.ok else "error",
+                    )
                     self.messages.append({
                         "role": "tool",
                         "tool_call_id": call.id,
@@ -116,6 +150,7 @@ class Agent:
             )
         except BaseException as exc:  # includes KeyboardInterrupt
             audit("agent.failed", error_type=type(exc).__name__, error=str(exc))
+            self.tracer.point(f"Agent → CLI · error ({type(exc).__name__})", str(exc), "error")
             self._close_dangling_tool_calls()
             raise
 
@@ -148,23 +183,28 @@ class Agent:
         self._emit("tool_call", name=call.name, arguments=arguments)
 
         if not isinstance(arguments, dict):
+            self.tracer.point(
+                "Agent · tool call rejected (arguments are not a JSON object)",
+                f"{call.name} {call.arguments_json}",
+                "error",
+            )
             result = ToolResult.failure(
                 "invalid_arguments", "Tool arguments must be a JSON object"
             )
-            self._audit(
+            self.audit_logger.record(
                 run_id, "tool.invalid_arguments", {"tool": call.name, "raw": call.arguments_json}
             )
         else:
+            self.tracer.point(
+                "Agent → Gateway · tool call",
+                f"{call.name} {json.dumps(arguments, ensure_ascii=False)}",
+                "tool",
+            )
             result = self.gateway.execute(run_id, call.name, arguments)
 
         self._emit("tool_result", name=call.name, ok=result.ok, data=result.data,
                    error=None if result.error is None else result.error.__dict__)
         return result
-
-    def _audit(self, run_id: str, event_type: str, details: dict[str, Any]) -> None:
-        """Record a step in the audit log and show it in debug mode."""
-        self.audit_logger.record(run_id, event_type, details)
-        self.tracer.event(event_type, details)
 
     def _emit(self, kind: str, **data: Any) -> None:
         """Tell the UI (if it is listening) about a tool call or its result."""

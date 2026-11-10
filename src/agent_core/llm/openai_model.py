@@ -15,6 +15,8 @@ from agent_core.llm import ModelResponse, ToolCall
 
 
 class OpenAIChatModel:
+    label = "OpenAI adapter"
+
     def __init__(
         self,
         api_key: str,
@@ -38,8 +40,8 @@ class OpenAIChatModel:
         if tools:  # the API rejects an empty tools list
             request["tools"] = tools
 
-        self.tracer.frame(
-            "MODEL INPUT · OpenAI request",
+        self.tracer.point(
+            "OpenAI adapter → OpenAI API · request",
             json.dumps(request, indent=2, ensure_ascii=False, default=str),
             "input",
         )
@@ -50,9 +52,13 @@ class OpenAIChatModel:
             raise ModelError(f"{type(exc).__name__}: {exc}") from exc
 
         message = completion.choices[0].message
-        self.tracer.frame(
-            f"MODEL OUTPUT · OpenAI ({time.monotonic() - start:.1f}s)",
-            json.dumps(message.model_dump(exclude_none=True), indent=2, ensure_ascii=False),
+        usage = completion.usage.model_dump() if completion.usage else {}
+        self.tracer.point(
+            f"OpenAI API → OpenAI adapter · raw response ({time.monotonic() - start:.1f}s)",
+            json.dumps(
+                {"message": message.model_dump(exclude_none=True), "usage": usage},
+                indent=2, ensure_ascii=False, default=str,
+            ),
             "output",
         )
         tool_calls = [
