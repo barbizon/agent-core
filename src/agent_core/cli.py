@@ -115,8 +115,9 @@ def main(argv: list[str] | None = None) -> int:
     model_label = settings.model or ("codex default" if settings.backend == "codex" else DEFAULT_OPENAI_MODEL)
     print(f"=== agent-core · backend={settings.backend} · model={model_label} · tools={len(agent.registry)} ===")
     if tracer.enabled:
-        print("Debug mode: every step is printed in a frame "
-              "(blue = model input, green = model output, yellow = tool result, red = error).")
+        print("Debug mode: each message is traced through the pipeline as numbered points.\n"
+              "Colors: cyan = your input, blue = to the model, green = from the model, "
+              "yellow = tools, gray = internal, magenta = answer, red = error.")
     print("Type /help for commands.")
 
     while True:

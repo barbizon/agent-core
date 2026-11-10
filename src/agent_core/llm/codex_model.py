@@ -24,7 +24,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
-from agent_core.debug import Tracer, pretty_json
+from agent_core.debug import Tracer
 from agent_core.errors import ModelError
 from agent_core.llm import ModelResponse, ToolCall
 
@@ -57,6 +57,8 @@ Runner = Callable[..., subprocess.CompletedProcess]
 
 
 class CodexCLIModel:
+    label = "Codex adapter"
+
     def __init__(
         self,
         model: str | None = None,
@@ -99,9 +101,9 @@ class CodexCLIModel:
                 command += ["--model", self.model]
             command.append("-")  # prompt on stdin: no argv length limit, not visible in `ps`
 
-            self.tracer.frame(
-                "MODEL INPUT · codex exec",
-                f"$ {shlex.join(command)}\n\n--- prompt (sent on stdin) ---\n{prompt}",
+            self.tracer.point(
+                "Codex adapter → codex exec · command + prompt (stdin)",
+                f"$ {shlex.join(command)}\n\n--- prompt ({len(prompt):,} chars) ---\n{prompt}",
                 "input",
             )
             start = time.monotonic()
@@ -121,15 +123,18 @@ class CodexCLIModel:
             except subprocess.TimeoutExpired as exc:
                 raise ModelError(f"codex exec timed out after {self.timeout_seconds}s") from exc
 
+        elapsed = time.monotonic() - start
+        self.tracer.point(
+            f"codex exec → Codex adapter · raw output ({elapsed:.1f}s, exit {completed.returncode})",
+            describe_codex_output(completed.stdout, completed.stderr, completed.returncode),
+            "output" if completed.returncode == 0 else "error",
+        )
+
         if completed.returncode != 0:
             stderr_tail = "\n".join((completed.stderr or "").strip().splitlines()[-5:])
             raise ModelError(f"codex exec failed (exit {completed.returncode}):\n{stderr_tail}")
 
-        reply = extract_agent_message(completed.stdout)
-        self.tracer.frame(
-            f"MODEL OUTPUT · codex ({time.monotonic() - start:.1f}s)", pretty_json(reply), "output"
-        )
-        return parse_decision(reply)
+        return parse_decision(extract_agent_message(completed.stdout))
 
 
 def build_prompt(messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> str:
@@ -174,6 +179,36 @@ def _transcript(messages: list[dict[str, Any]]) -> str:
                 f"<tool_result>\n{message['content']}\n</tool_result>"
             )
     return "\n\n".join(lines) or "(empty)"
+
+
+def describe_codex_output(stdout: str, stderr: str, returncode: int) -> str:
+    """Summarize codex's JSONL event stream for debug output, one line per event."""
+    lines = []
+    for line in stdout.splitlines():
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            lines.append(f"(not JSON) {line}")
+            continue
+        kind = event.get("type", "?")
+        item = event.get("item") or {}
+        usage = event.get("usage") or {}
+        if kind == "item.completed":
+            lines.append(f"{kind} ({item.get('type')}): {item.get('text', '')}")
+        elif kind == "turn.completed":
+            lines.append(
+                f"{kind}: {usage.get('input_tokens', 0):,} input tokens "
+                f"({usage.get('cached_input_tokens', 0):,} cached), "
+                f"{usage.get('output_tokens', 0):,} output tokens"
+            )
+        else:
+            lines.append(kind)
+    if returncode != 0:
+        tail = "\n".join((stderr or "").strip().splitlines()[-5:])
+        lines.append(f"stderr (last lines):\n{tail}")
+    return "\n".join(lines) or "(no output)"
 
 
 def extract_agent_message(stdout: str) -> str:

@@ -52,6 +52,12 @@ class ToolGateway:
 
     def execute(self, run_id: str, tool_name: str, arguments: dict[str, Any]) -> ToolResult:
         """Run one tool call through all safety checks and return the result."""
+        # In debug mode, every step below is collected and shown as one framed point.
+        with self.tracer.collect_checks(f"Gateway · safety checks for '{tool_name}'"):
+            return self._execute(run_id, tool_name, arguments)
+
+    def _execute(self, run_id: str, tool_name: str, arguments: dict[str, Any]) -> ToolResult:
+        """The pipeline itself: lookup, validate, permission, approval, token, run."""
         call_id = new_id()
 
         def audit(event_type: str, **details: Any) -> None:
