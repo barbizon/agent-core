@@ -1,0 +1,10 @@
+{
+  "backend": "codex",
+  "model": null,
+  "max_steps": 10,
+  "request_timeout_seconds": 60,
+  "max_tool_result_chars": 8000,
+  "audit_log": ".orvik/logs/audit.jsonl",
+  "workspace": null,
+  "debug": false
+}

@@ -1,4 +1,4 @@
-"""Debug tracing: follow one request through the whole pipeline (``agent-core -d``).
+"""Debug tracing: follow one request through the whole pipeline (``orvik -d``).
 
 Each user message starts a new REQUEST banner. Every hop in the pipeline is
 printed as a numbered point, showing who hands what to whom:
@@ -45,23 +45,29 @@ class Tracer:
         stream: TextIO | None = None,
         width: int | None = None,
         color: bool | None = None,
+        request_count: int = 0,
     ) -> None:
-        """Create a tracer; it prints only when enabled."""
+        """Create a tracer; it prints only when enabled. request_count continues numbering."""
         self.enabled = enabled
         self.stream = stream or sys.stdout
         self.width = max(40, width or min(shutil.get_terminal_size((100, 20)).columns, 120))
         if color is None:
             color = self.stream.isatty() and "NO_COLOR" not in os.environ
         self.color = color
-        self._request_no = 0
+        self._request_no = request_count
         self._point_no = 0
         self._checks: list[tuple[str, bool]] | None = None  # set while collecting
 
+    @property
+    def request_count(self) -> int:
+        """How many user messages this session has had (counted even while disabled)."""
+        return self._request_no
+
     def begin_request(self, text: str) -> None:
         """Print a banner for a new user message and restart the numbering at ①."""
+        self._request_no += 1  # counted even when disabled, so numbers stay right after /debug on
         if not self.enabled:
             return
-        self._request_no += 1
         self._point_no = 0
         label = " ".join(text.split())
         title = f" REQUEST #{self._request_no} · \"{label}\" "

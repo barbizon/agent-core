@@ -1,0 +1,12 @@
+{
+  "name": "read_file",
+  "description": "Read a UTF-8 text file from the workspace.",
+  "risk_level": "read",
+  "mode": "process",
+  "timeout_seconds": 5,
+  "parameters": {
+    "path": {"type": "string", "description": "Path relative to the workspace folder"}
+  },
+  "required": ["path"],
+  "run": {"python": "agent_core.tools.files:read_file"}
+}

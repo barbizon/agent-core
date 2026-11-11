@@ -7,6 +7,8 @@ from agent_core.tools import build_registry
 from agent_core.tools.registry import ExecutionMode, ToolDefinition, ToolRegistry
 from tests import tool_fixtures as fx
 
+REPO_TOOLS = __import__("pathlib").Path(__file__).parents[1] / ".orvik" / "tools"
+
 STR = {"type": "string", "description": "text"}
 
 
@@ -17,11 +19,16 @@ def tool(**overrides) -> ToolDefinition:
     return ToolDefinition(**spec)
 
 
-def test_default_registry_is_empty():
-    registry = build_registry()
-    assert len(registry) == 0
-    assert registry.openai_schemas() == []
-    assert registry.describe() == "(no tools registered)"
+def test_empty_registry_describe():
+    assert ToolRegistry([]).describe() == "(no tools registered)"
+
+
+def test_default_registry_has_the_file_tools():
+    registry = build_registry(REPO_TOOLS)
+    assert [t.name for t in registry.list_tools()] == ["list_folder", "read_file", "write_file"]
+    assert registry.get("list_folder").risk_level == RiskLevel.READ
+    assert registry.get("read_file").risk_level == RiskLevel.READ
+    assert registry.get("write_file").risk_level == RiskLevel.WRITE
 
 
 def test_openai_schema_shape():

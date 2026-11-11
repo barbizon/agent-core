@@ -82,7 +82,7 @@ class CodexCLIModel:
         """Ask Codex for the next step and return it as a ModelResponse."""
         prompt = build_prompt(messages, tools)
 
-        with tempfile.TemporaryDirectory(prefix="agent-core-codex-") as workdir:
+        with tempfile.TemporaryDirectory(prefix="orvik-codex-") as workdir:
             schema_path = Path(workdir) / "decision.schema.json"
             schema_path.write_text(json.dumps(DECISION_SCHEMA), encoding="utf-8")
 

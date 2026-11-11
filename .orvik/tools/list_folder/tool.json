@@ -1,0 +1,12 @@
+{
+  "name": "list_folder",
+  "description": "List the files and folders in a workspace folder. Use \".\" for the workspace itself.",
+  "risk_level": "read",
+  "mode": "process",
+  "timeout_seconds": 5,
+  "parameters": {
+    "path": {"type": "string", "description": "Path relative to the workspace folder"}
+  },
+  "required": [],
+  "run": {"python": "agent_core.tools.files:list_folder"}
+}

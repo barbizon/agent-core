@@ -88,7 +88,9 @@ class ProcessExecutor:
         for sig in (signal.SIGTERM, signal.SIGKILL):
             try:
                 os.killpg(process.pid, sig)
-            except ProcessLookupError:
+            except (ProcessLookupError, PermissionError):
+                # Gone already. macOS raises PermissionError when every process
+                # left in the group is a zombie (exited, not yet collected).
                 pass
             try:
                 process.wait(timeout=self.termination_grace_seconds)
