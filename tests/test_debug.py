@@ -168,3 +168,12 @@ def test_errors_are_traced(make_gateway, audit):
     except RuntimeError:
         pass
     assert "Agent → CLI · error (RuntimeError)" in out.getvalue()
+
+
+def test_request_numbers_continue_while_disabled_and_across_tracers():
+    quiet = Tracer(enabled=False)
+    quiet.begin_request("first")  # counted, not printed
+    t2, out = tracer()
+    t2 = Tracer(enabled=True, stream=out, width=100, color=False, request_count=quiet.request_count)
+    t2.begin_request("second")
+    assert 'REQUEST #2 · "second"' in out.getvalue()

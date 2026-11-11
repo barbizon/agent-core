@@ -1,5 +1,5 @@
 [project]
-name = "agent-core"
+name = "orvik"
 version = "0.1.0"
 description = "Clean AI agent runtime with layered safety controls"
 requires-python = ">=3.11"
@@ -12,7 +12,7 @@ dependencies = [
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-agent-core = "agent_core.cli:main"
+orvik = "agent_core.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

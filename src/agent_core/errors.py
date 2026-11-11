@@ -10,6 +10,10 @@ class ConfigError(Exception):
     """Invalid or missing configuration."""
 
 
+class ToolManifestError(Exception):
+    """A tool.json file is invalid; the agent refuses to start with it."""
+
+
 class ModelError(Exception):
     """The model backend failed (auth, network, timeout, unparseable reply...)."""
 

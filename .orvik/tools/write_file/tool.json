@@ -1,0 +1,13 @@
+{
+  "name": "write_file",
+  "description": "Create or overwrite a UTF-8 text file in the workspace. Missing folders on the path are created.",
+  "risk_level": "write",
+  "mode": "thread",
+  "timeout_seconds": 5,
+  "parameters": {
+    "path": {"type": "string", "description": "Path relative to the workspace folder"},
+    "content": {"type": "string", "description": "The full new file content"}
+  },
+  "required": ["path", "content"],
+  "run": {"python": "agent_core.tools.files:write_file"}
+}

@@ -1,527 +1,179 @@
-# agent-core
+# Orvik
 
-A small, clean AI agent runtime in Python. You chat with a real LLM in the
-terminal (through your **ChatGPT subscription** via the Codex CLI by default,
-or through the OpenAI API), and the LLM can call **tools** (Python functions) to do
-work. Every tool call passes through a safety pipeline first: argument
-checks, a permission policy, human approval, a single-use authorization,
-timeouts, retries and an audit log.
+An AI agent for your terminal. It chats with you, reads and writes files in
+the folder you start it in, and **asks you before it changes anything**.
 
-**Current state:** the runtime, the safety layer and the CLI are complete and
-tested. **No tools are registered yet**, so right now the agent is a plain
-chat assistant. Tools are the next step (see [Adding a tool](#adding-a-tool)).
+> **The name.** "Orvik" is an invented word. The ending *-vik* means "bay" in
+> Scandinavian languages (as in Reykjavík): a sheltered harbour where every
+> ship is checked before it sails out. In the same way, every action Orvik
+> takes is checked first.
 
----
+## What it does
 
-## Contents
+- **Chats with an AI** through your ChatGPT subscription (the Codex CLI). No API key needed.
+- **Looks at files:** lists folders and reads text files.
+- **Changes files only with your OK:** before every write, it shows you the change and waits for `y`.
+- **Stays in its folder:** it can only reach the folder you start it in. Its own `.orvik` folder (settings, secrets, tools) is invisible to it.
 
-1. [Quick start](#quick-start)
-2. [Configuration](#configuration)
-3. [Using the CLI](#using-the-cli)
-4. [How it works](#how-it-works)
-5. [The safety pipeline](#the-safety-pipeline)
-6. [Audit log](#audit-log)
-7. [Adding a tool](#adding-a-tool)
-8. [Error types](#error-types)
-9. [Testing](#testing)
-10. [Project layout](#project-layout)
-11. [Troubleshooting](#troubleshooting)
-12. [Known limitations / next steps](#known-limitations--next-steps)
+## Requirements
 
----
+- Python 3.11 or newer
+- The [Codex CLI](https://github.com/openai/codex), signed in with your ChatGPT account: `codex login`
 
-## Quick start
-
-Requires Python 3.11+ and the [Codex CLI](https://github.com/openai/codex)
-signed in with your ChatGPT account. No API key is needed.
+## Install
 
 ```bash
-cd ~/Documents/agent-core
-
-# 1. Sign in to Codex once (check with: codex login status)
-codex login
-
-# 2. Create a virtualenv and install (pick one)
+cd ~/Documents/orvik
 uv venv .venv && uv pip install -e '.[dev]'
-# or: python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
+# without uv: python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
+```
 
-# 3. Optional: copy the config (the defaults already work)
-cp .env.example .env
+To run `orvik` from any folder, also install it as a command:
 
-# 4. Chat
-.venv/bin/agent-core
+```bash
+uv tool install --editable ~/Documents/orvik
+```
+
+## Start
+
+```bash
+cd ~/Documents/orvik
+.venv/bin/orvik            # or just `orvik` after `uv tool install`
 ```
 
 ```
-=== agent-core · backend=codex · model=codex default · tools=0 ===
+=== orvik · backend=codex · model=codex default · tools=3 ===
+Working directory: /Users/you/Documents/orvik
+Config: .orvik/config.json (loaded). It is reloaded automatically when it changes.
 Type /help for commands.
 
-You: What is an agent loop?
-
-Agent: An agent loop is ...
+You: what files are here?
 ```
 
-Run it from the project root: `.env` and the `logs/` folder are resolved
-relative to the current directory. With the Codex backend each reply takes
-about 5–15 seconds, because every model call starts a `codex exec` process.
+Orvik works on **the folder you start it in**, and reads its settings and
+tools from **`.orvik/` inside that folder**. In a folder without `.orvik/` it
+can only chat. To use it somewhere else, copy the `.orvik` folder there.
 
-### Model backends
+| Option | What it does |
+|---|---|
+| `-d`, `--debug` | Show every step of each request (see [Debug mode](#debug-mode)) |
+| `--model NAME` | Use a specific AI model |
+| `--max-steps N` | Max AI calls per message (default 10) |
+| `--backend codex\|openai` | `openai` = the paid OpenAI API instead of your subscription |
+| `--config PATH` | Use another settings file |
+| `--env-file PATH` | Use another secrets file |
 
-| Backend | Pays with | Needs | Tool calling |
-|---|---|---|---|
-| `codex` (default) | Your ChatGPT subscription | `codex login` | Codex replies with one JSON "decision" (final answer **or** one tool call), enforced with `--output-schema` |
-| `openai` | API credits (billed separately from ChatGPT) | `OPENAI_API_KEY` from platform.openai.com | Native function calling, several tools per step possible |
+## Chat commands
 
-A ChatGPT Plus/Pro subscription does **not** include API access. That is
-why `codex` is the default.
+| Command | What it does |
+|---|---|
+| `/help` | List the commands |
+| `/tools` | List the tools Orvik can use |
+| `/config` | Show every setting, where it comes from, and what it means |
+| `/debug on` · `/debug off` | Switch debug mode for this session (`/debug` alone shows the status) |
+| `/policy` | Show what kinds of actions are allowed |
+| `/reset` | Start a fresh conversation |
+| `/exit` | Quit (Ctrl-D also works) |
 
-How the Codex backend works (`src/agent_core/llm/codex_model.py`):
+Ctrl-C stops the current answer; the chat stays open.
 
-- `codex exec` keeps no state between calls, so each call sends the **whole
-  conversation** on stdin: the system prompt, the rules for replying, the
-  tool list (with JSON schemas) and the transcript so far.
-- `--output-schema` forces the reply into
-  `{"type", "answer", "tool", "arguments_json"}`, which is turned into a
-  normal `ModelResponse`. The agent loop and the gateway behave the same
-  for both backends.
-- **Codex is a full agent with its own shell**, so it is locked down. Each
-  call runs with `--sandbox read-only` inside a fresh empty temporary folder,
-  with `--ephemeral` (no saved session), `--ignore-user-config` (no MCP
-  servers or plugins from `~/.codex`) and `--ignore-rules`. Real actions
-  happen only through **our** tools and gateway.
+## Tools
 
----
-
-## Configuration
-
-Settings come from environment variables, which can be put in `.env`.
-Command-line flags override them.
-
-| Env variable | Default | Meaning |
+| Tool | What it does | Asks you first? |
 |---|---|---|
-| `AGENT_BACKEND` | `codex` | `codex` (ChatGPT subscription) or `openai` (API key). |
-| `AGENT_MODEL` | backend default | Model name. Empty means Codex's default, or `gpt-4.1-mini` for `openai`. |
-| `OPENAI_API_KEY` | (empty) | Needed **only** for `AGENT_BACKEND=openai`. The CLI exits with code 2 if it's missing then. |
-| `AGENT_MAX_STEPS` | `10` | Maximum model calls per user message. Stops runaway tool loops. |
-| `AGENT_AUDIT_LOG` | `logs/audit.jsonl` | Where audit events are appended. |
-| `AGENT_REQUEST_TIMEOUT_SECONDS` | `120` | Timeout for each model call (`codex exec` run or API request). |
-| `AGENT_MAX_TOOL_RESULT_CHARS` | `8000` | Tool output sent to the model is cut off at this size. |
+| `list_folder` | Lists files and folders | No |
+| `read_file` | Reads a text file (up to 200 KB) | No |
+| `write_file` | Creates or replaces a text file | **Yes, every time** |
 
-| CLI flag | Effect |
-|---|---|
-| `--backend codex\|openai` | Overrides `AGENT_BACKEND`. |
-| `--model NAME` | Overrides `AGENT_MODEL`. |
-| `--max-steps N` | Overrides `AGENT_MAX_STEPS`. |
-| `--allow-write` | Lets the agent *request* **write** tools. Each call still needs your approval. |
-| `--allow-dangerous` | Lets the agent *request* **dangerous** tools. Each call still needs your approval. |
-| `-d`, `--debug` | Follows each message through the pipeline as numbered boxes. See [Debug mode](#debug-mode). |
-| `--env-file PATH` | Loads a different env file (default `.env`). |
-
-Without flags, a session is **read-only**: write and dangerous tools are
-refused before you are even asked.
-
----
-
-## Using the CLI
-
-| Input | What it does |
-|---|---|
-| any text | Sends a message to the agent. The conversation is kept between messages. |
-| `/tools` | Lists registered tools with their arguments, risk level, execution mode and timeout. |
-| `/policy` | Shows which risk levels this session allows. |
-| `/reset` | Clears the conversation history (the system prompt is kept). |
-| `/help` | Shows the commands. |
-| `/exit`, `/quit`, Ctrl-D | Quits. |
-| Ctrl-C during a reply | Stops the current run. The chat stays open and the history stays valid. |
-
-### What you'll see once tools exist
-
-Tool activity is printed as it happens:
-
-```
-You: what's in notes.txt?
-  → read_file({"path": "notes.txt"})
-  ← ok: {"content": "buy milk"}
-
-Agent: The file says "buy milk".
-```
-
-A **write** or **dangerous** tool stops and asks you first (only if you
-started with `--allow-write` / `--allow-dangerous`):
+When Orvik wants to change something, it stops and asks:
 
 ```
 === APPROVAL REQUIRED ===
 Tool:       write_file
 Risk level: write
-Arguments:  {
-  "path": "notes.txt",
-  "content": "..."
-}
+Arguments:  { "path": "notes.txt", "content": "..." }
 Approve this action? [y/N]:
 ```
 
-Only `y` approves. Anything else, including Enter, Ctrl-C or Ctrl-D, is a
-"no". When a call is refused, the model receives a structured error
-(`approval_denied`), and the system prompt tells it to explain the refusal
-rather than work around it.
+Only `y` approves. Anything else (Enter, `n`, Ctrl-C) means no, and Orvik
+tells you it didn't do it.
 
-### Debug mode
+## Settings
 
-Run `.venv/bin/agent-core -d` to follow each message through the whole
-pipeline. Every message starts a `REQUEST #n` banner, and each hop is a
-numbered box showing **who hands what to whom**:
-
-| Point | Hop | What you see |
-|---|---|---|
-| ① | CLI → Agent | Your message |
-| ② | Agent | The history that will be sent to the model, one line per message |
-| ③ | Agent → adapter | Which step this is (out of the max) and which tools are offered |
-| ④ | adapter → model | The exact request: the `codex exec` command plus the full prompt (or the OpenAI request JSON) |
-| ⑤ | model → adapter | The raw reply: Codex's event stream, token usage, time, exit code |
-| ⑥ | adapter → Agent | The parsed decision: `final_answer` or `tool_call` |
-| ⑦ | Agent → CLI | The final answer, the number of steps and the total time |
-
-When the model asks for a tool, points are added between ⑥ and the next
-model call:
+Everything Orvik keeps is in the `.orvik` folder:
 
 ```
-Agent → Gateway · tool call          echo {"text": "ping"}
-Gateway · safety checks for 'echo'   → requested … ✓ permission … ✓ done (12 ms)
-Gateway → Agent · tool result        exactly what is added to the history
+.orvik/
+├── config.json      settings (applied live when you edit them)
+├── .env             secrets: only needed for the openai backend
+├── .env.example     template for .env
+├── logs/            the audit log of everything Orvik did
+└── tools/           one folder per tool, each with a tool.json
 ```
 
-The loop then goes back to ② for the next step, with a longer history.
-Point ② shows that the **whole conversation is sent again on every call**:
-the model has no memory.
-
-Border colors: cyan = your input, blue = going to the model, green = coming
-from the model, yellow = tools, gray = internal state and safety checks,
-magenta = final answer, red = anything that failed. Values under
-secret-looking keys are hidden, as in the audit log. Colors are off when the
-output isn't a terminal, or when `NO_COLOR` is set.
-
-### Errors in the chat
-
-| Message | Meaning |
-|---|---|
-| `[model error] codex exec failed (exit N): ...` | Codex failed; the last lines of its stderr are shown. Usually you're not signed in: run `codex login`. |
-| `[model error] codex exec timed out ...` | Raise `AGENT_REQUEST_TIMEOUT_SECONDS`. |
-| `[model error] codex returned ...` | Codex replied in an unexpected format. Send the message again. |
-| `[model error] AuthenticationError ...` | (`openai` backend) Bad or missing API key. |
-| `[model error] RateLimitError / APIConnectionError ...` | (`openai` backend) The SDK already retried twice. Try again. |
-| `[stopped] Agent reached the step limit ...` | The model kept calling tools without answering. Raise `--max-steps` or rephrase. |
-| `[interrupted]` | You pressed Ctrl-C. |
-
-The chat keeps going after any of these.
-
----
-
-## How it works
-
-```
- you ──► cli.py ──► Agent.send(message)
-                       │
-                       ▼
-            ┌──── agent loop (max_steps) ─────────────────────┐
-            │  model.complete(history, tool schemas)           │
-            │    (CodexCLIModel or OpenAIChatModel)            │
-            │        │                                         │
-            │        ├─ text only?  ──► return the answer       │
-            │        │                                         │
-            │        └─ tool calls? ──► for each call:          │
-            │              parse JSON arguments                 │
-            │              ToolGateway.execute(...)  ◄── safety │
-            │              append the result (size-capped)      │
-            │              to the history, loop again           │
-            └──────────────────────────────────────────────────┘
-```
-
-Key ideas:
-
-- **The conversation is a list of OpenAI messages**: `system`, `user`,
-  `assistant` (possibly with `tool_calls`), and `tool`. `Agent.messages`
-  holds it, and `/reset` clears it.
-- **One user message is one run.** It gets a `run_id`, and every audit
-  event in that run carries it.
-- **Every tool call gets a reply.** The OpenAI API requires a `tool` message
-  for each `tool_call_id`. Errors are returned as tool results, not raised.
-  If a run is interrupted, the agent fills in `interrupted` results so the
-  next message still works.
-- **Tool results are untrusted data.** The system prompt says so, and each
-  result is capped at `AGENT_MAX_TOOL_RESULT_CHARS`.
-- **Backends are interchangeable.** Both implement the `ChatModel`
-  protocol (`complete(messages, tools) -> ModelResponse`), and the history
-  always uses the OpenAI message format.
-- **Everything is injected.** `cli.build_model()` / `cli.build_agent()` are
-  the only places the pieces are wired together: model, registry, gateway, approver, audit
-  logger and process executor. Tests swap in their own pieces.
-
----
-
-## The safety pipeline
-
-`ToolGateway.execute()` in `src/agent_core/gateway.py` is the **only** code
-path from a model's tool request to running a function. It runs in this order:
-
-| # | Step | Fails with |
-|---|---|---|
-| 1 | **Lookup**: does the tool exist? | `unknown_tool` |
-| 2 | **Validate** the arguments against the declared schema (required, no extras, types, enums; `true` is not accepted as an integer) | `missing_argument`, `unexpected_argument`, `invalid_argument_type`, `invalid_argument_value` |
-| 3 | **Permission policy**: is this risk level allowed in this session? | `permission_denied` |
-| 4 | **Human approval** (write/dangerous only). A crashing approver counts as "no". | `approval_denied`, `approval_required` |
-| 5 | **Authorize**: issue a single-use token tied to the exact `(tool, arguments)`. This happens **only after steps 3 and 4 pass.** | `authorization_failed` |
-| 6 | **Execute**: use up the token, then run with a timeout and the tool's retry policy | `timeout`, `worker_crashed`, `execution_error`, ... |
-
-**Approval comes first.** No token exists until the policy and a human have
-both said yes, so a refused call leaves nothing behind. The token guarantees
-that the action that runs is exactly the one that was approved, and that an
-approval cannot be reused.
-
-### Rules checked when a tool is defined
-
-`ToolDefinition` raises `ValueError` at startup if any of these is broken:
-
-- The name matches `^[a-zA-Z0-9_-]{1,64}$` and the description is not empty.
-- `risk_level` is a `RiskLevel` and `execution_mode` is an `ExecutionMode` (enums, not plain strings).
-- Every argument type is one of `string`, `integer`, `number`, `boolean`, `array`, `object`.
-- **Write and dangerous tools cannot retry automatically** (a retried write could happen twice).
-- **Process mode is for read tools only**, and the function must be importable at module level.
-
-### Execution modes
-
-| Mode | How it runs | On timeout |
-|---|---|---|
-| `THREAD` (default) | Background thread in the same process | The agent stops waiting, but Python **cannot kill a thread**, so the work may keep running. Use for fast, trusted code. |
-| `PROCESS` | Separate Python subprocess in its own process group | The whole group is sent SIGTERM, then SIGKILL, including any child processes the tool started. Use for anything that might hang. |
-
-Extra protections in process mode: the worker only imports functions from
-packages it is told to allow (`agent_core.tools.` by default), anything the
-tool prints goes to stderr so it cannot fake the JSON result, and a result
-that can't be turned into JSON is reported as an error.
-
-### Retries
-
-Only **read** tools can retry, and only on `temporary_unavailable` or
-`rate_limited` errors. The wait doubles each time (`initial_delay_seconds ×
-backoff_multiplier^(attempt-1)`). Retries of the OpenAI API calls themselves are
-handled by the SDK (`max_retries=2`). Codex calls are not retried.
-
----
-
-## Audit log
-
-Every decision is written as one JSON line to `logs/audit.jsonl`:
+`config.json`:
 
 ```json
-{"timestamp": "...", "run_id": "…", "event_type": "tool.approval_granted",
- "details": {"tool": "write_file"}, "call_id": "…"}
+{
+  "backend": "codex",
+  "model": null,
+  "max_steps": 10,
+  "request_timeout_seconds": 60,
+  "max_tool_result_chars": 8000,
+  "audit_log": ".orvik/logs/audit.jsonl",
+  "workspace": null,
+  "debug": false
+}
 ```
 
-- `run_id` identifies one user message; `call_id` identifies one tool call within it.
-- Values under keys containing `password`, `secret`, `token`, `api_key`,
-  `apikey` or `authorization` are replaced with `***REDACTED***`.
-
-**Event types**
-
-| Area | Events |
+| Setting | Meaning |
 |---|---|
-| Agent | `agent.started`, `model.requested`, `model.responded`, `agent.finished`, `agent.failed`, `tool.invalid_arguments` |
-| Gateway | `tool.requested`, `tool.rejected`, `tool.permission_checked`, `tool.approval_requested`, `tool.approval_granted`, `tool.approval_denied`, `tool.approval_failed`, `tool.authorization_issued`, `tool.authorization_failed`, `tool.execution_started`, `tool.execution_succeeded`, `tool.execution_failed` |
-| Retries | `tool.attempt_started`, `tool.attempt_succeeded`, `tool.attempt_failed`, `tool.attempt_retry_scheduled` |
+| `backend` | `codex` (your ChatGPT subscription) or `openai` (paid API) |
+| `model` | AI model; `null` = the backend's default |
+| `max_steps` | Max AI calls per message, so it can't loop forever |
+| `request_timeout_seconds` | How long to wait for one AI reply |
+| `max_tool_result_chars` | Tool output longer than this is cut before it reaches the AI |
+| `audit_log` | Where the log of every action is written |
+| `workspace` | The folder Orvik may use; `null` = the folder you started in |
+| `debug` | Same as `-d` |
 
-**Useful queries** (needs `jq`):
+- **Edit `config.json` while Orvik runs:** the change applies before your next message, and the conversation is kept.
+- **Order of precedence:** command-line option > `config.json` > `.env` > default. `/config` shows which one won for each setting.
+- **The API key** (only for `backend: openai`) goes in `.orvik/.env`, never in `config.json`.
 
-```bash
-# follow the log live
-tail -f logs/audit.jsonl | jq -c '{t: .timestamp[11:19], e: .event_type, d: .details}'
+## Debug mode
 
-# replay one run
-jq -c 'select(.run_id == "RUN_ID")' logs/audit.jsonl
+Start with `-d`, or type `/debug on` in the chat, to watch each request travel
+through Orvik step by step: your message, the exact prompt sent to the AI,
+its raw reply, the safety checks for each tool, and the final answer. Type
+`/debug off` to stop. [ARCHITECTURE.md](ARCHITECTURE.md#debug-tracer)
+explains each step.
 
-# every failure
-jq -c 'select(.event_type | test("failed|denied|rejected"))' logs/audit.jsonl
-```
+## Add your own tool
 
----
+1. Write a Python function in `src/agent_core/tools/` that returns JSON-friendly data.
+2. Describe it in `.orvik/tools/<tool_name>/tool.json`: description, parameters,
+   risk level, and which function to run.
+3. Restart Orvik and check with `/tools`.
 
-## Adding a tool
-
-1. **Write the function** in a module under `src/agent_core/tools/`. It
-   takes keyword arguments and returns JSON-friendly data. For known
-   failures, raise one of the classes in `agent_core.errors`:
-   `TemporaryToolError` (retryable), `RateLimitToolError` (retryable) or
-   `PermanentToolError`.
-
-   ```python
-   # src/agent_core/tools/clock.py
-   from datetime import datetime
-   from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
-   from agent_core.errors import PermanentToolError
-
-
-   def current_time(timezone: str) -> dict:
-       try:
-           now = datetime.now(ZoneInfo(timezone))
-       except ZoneInfoNotFoundError:
-           raise PermanentToolError(f"Unknown timezone: {timezone}")
-       return {"timezone": timezone, "iso": now.isoformat()}
-   ```
-
-2. **Register it** in `build_registry()` in `src/agent_core/tools/__init__.py`:
-
-   ```python
-   from agent_core.permissions import RiskLevel
-   from agent_core.retry import RetryPolicy
-   from agent_core.tools import clock
-
-   def build_registry() -> ToolRegistry:
-       return ToolRegistry([
-           ToolDefinition(
-               name="current_time",
-               description="Get the current time in an IANA timezone.",
-               function=clock.current_time,
-               risk_level=RiskLevel.READ,
-               parameters={
-                   "timezone": {"type": "string", "description": "e.g. Europe/Berlin"},
-               },
-               execution_mode=ExecutionMode.PROCESS,
-               timeout_seconds=5,
-               retry_policy=RetryPolicy(max_attempts=1),
-           ),
-       ])
-   ```
-
-3. **Check it**: run `/tools` in the CLI, then ask *"what time is it in Tokyo?"*.
-
-**Choosing a risk level**
-
-| Level | Use for | Behavior |
-|---|---|---|
-| `READ` | Reads and lookups with no side effects | Runs without asking. Can retry. Can use process mode. |
-| `WRITE` | Changes something (files, records) | Needs `--allow-write` **and** your `y` for each call. Never retries. Thread mode only. |
-| `DANGEROUS` | Destructive or hard to undo (deleting, deploying, shell commands) | Needs `--allow-dangerous` **and** your `y` for each call. Never retries. Thread mode only. |
-
-Optional arguments: list them in `optional=frozenset({"name"})`. They stay
-in `parameters` but are left out of `required` in the schema.
-
----
-
-## Error types
-
-The model receives every failure as a structured tool result:
-`{"ok": false, "error": {"type": "...", "message": "..."}}`.
-
-| Type | Source |
-|---|---|
-| `unknown_tool` | No tool by that name, or the process worker could not import it |
-| `invalid_arguments` | The model's arguments were not valid JSON or not an object |
-| `missing_argument` / `unexpected_argument` / `invalid_argument_type` / `invalid_argument_value` | Schema check failed |
-| `permission_denied` | Blocked by the session policy, or by the process worker's allowed-package rule |
-| `approval_required` | The approver crashed or was unavailable |
-| `approval_denied` | You answered anything other than `y` |
-| `authorization_failed` | The token was missing, already used or didn't match (should never happen in normal use) |
-| `timeout` | The tool ran past its `timeout_seconds` |
-| `worker_crashed` / `worker_start_failed` / `invalid_worker_response` / `termination_unconfirmed` / `invalid_request` | Problems in process mode |
-| `executor_unavailable` | A process-mode tool was called but no process executor is configured |
-| `temporary_unavailable` / `rate_limited` | Raised by the tool; retryable |
-| `permanent_failure` | Raised by the tool; not retried |
-| `execution_error` | Any other exception from the tool |
-| `interrupted` | You pressed Ctrl-C before this call finished |
-
----
-
-## Testing
-
-```bash
-.venv/bin/pytest            # the whole suite (~2–3 s)
-.venv/bin/pytest -k gateway # one area
-.venv/bin/pytest -v tests/test_gateway.py::test_approval_denied_issues_no_token
-```
-
-The tests make **no network calls** and never start `codex`. They use test-only doubles from
-`tests/`, which are never part of the app:
-
-- `tests/tool_fixtures.py`: small test tools (echo, hang, crash, flaky, ...)
-- `tests/conftest.py`: `ScriptedModel` (replays fixed model responses), `RecordingApprover`, and a `make_gateway` fixture
-
-| File | Covers |
-|---|---|
-| `test_gateway.py` | Pipeline order, approval-first authorization, approver failing closed, retries, audit IDs |
-| `test_agent.py` | Chat history, tool-call round trip, malformed arguments, step limit, interrupt repair, reset |
-| `test_executors.py` | Thread/process timeouts, killing the process group, stdout isolation, allowed packages, crashes |
-| `test_registry.py` | Definition rules, schema export, argument validation |
-| `test_safety_primitives.py` | Policy, single-use tokens, retry rules, redaction, truncation, approvers |
-| `test_codex_model.py` | Codex flags (sandbox/isolation), prompt building, decision parsing, failures (using recorded output, no real `codex` calls) |
-| `test_debug.py` | Frame drawing, point numbering, collected safety checks, redaction, and the full pipeline trace (agent, gateway, Codex) |
-| `test_config.py` | Env loading, backend selection and validation |
-
----
-
-## Project layout
-
-```
-agent-core/
-├── .env.example                 # copy to .env
-├── pyproject.toml               # deps + `agent-core` console script
-├── logs/audit.jsonl             # created on first run (gitignored)
-├── src/agent_core/
-│   ├── cli.py                   # chat loop + build_agent() wiring
-│   ├── agent.py                 # Agent: conversation + bounded tool loop
-│   ├── llm/
-│   │   ├── __init__.py          # ChatModel protocol, ModelResponse, ToolCall
-│   │   ├── codex_model.py       # CodexCLIModel (ChatGPT subscription)
-│   │   └── openai_model.py      # OpenAIChatModel (API key)
-│   ├── gateway.py               # ToolGateway: the safety pipeline
-│   ├── debug.py                 # Tracer: numbered pipeline trace (-d)
-│   ├── config.py                # Settings from env/.env
-│   ├── permissions.py           # RiskLevel, PermissionPolicy
-│   ├── approvals.py             # Terminal / DenyAll approval providers
-│   ├── authorization.py         # single-use action tokens
-│   ├── retry.py                 # RetryPolicy, execute_with_retry
-│   ├── audit.py                 # JSONL / in-memory audit loggers, redaction
-│   ├── results.py               # ToolResult / ToolError, model serialization
-│   ├── errors.py                # exception types
-│   ├── execution/
-│   │   ├── thread_executor.py   # run_in_thread (deadline)
-│   │   ├── process_executor.py  # ProcessExecutor (killable subprocess)
-│   │   └── process_worker.py    # subprocess entry point
-│   └── tools/
-│       ├── __init__.py          # build_registry(): register tools here
-│       └── registry.py          # ToolDefinition, ToolRegistry
-└── tests/
-```
-
----
+The `tool.json` format is in [ARCHITECTURE.md](ARCHITECTURE.md#tools).
+Tools written in any language (not just Python) are planned.
 
 ## Troubleshooting
 
-| Symptom | Fix |
+| Problem | Fix |
 |---|---|
-| `[model error] codex exec failed` / `'codex' not found` | Install the Codex CLI, run `codex login`, and check with `codex login status`. |
-| `401 Incorrect API key` | You're on `--backend openai` (or `AGENT_BACKEND=openai`) without an API key. A ChatGPT subscription doesn't include one, so use the default `codex` backend. |
-| `Configuration error: OPENAI_API_KEY is not set` | Only for the `openai` backend. Add the key to `.env`, or switch back to `codex`. |
-| `[model error] ... model` not found | That model isn't available to you. Change `AGENT_MODEL` / `--model`, or leave it empty. |
-| `command not found: agent-core` | Use `.venv/bin/agent-core`, or activate the env with `source .venv/bin/activate`. |
-| `ValueError` at startup about a tool | A tool definition breaks one of the [rules above](#rules-checked-when-a-tool-is-defined); the message says which. |
-| The agent says it isn't permitted to do something | Start with `--allow-write` / `--allow-dangerous`. Check with `/policy`. |
-| Answers drift or get slow in a long chat | Run `/reset`. History is not trimmed yet (see below). |
+| `[model error] codex exec failed` or `'codex' not found` | Install the Codex CLI and run `codex login`. Check with `codex login status`. |
+| `401 Incorrect API key` | You're on the `openai` backend. A ChatGPT subscription doesn't include API access, so switch back to `"backend": "codex"`. |
+| `[model error] ... timed out` | Raise `request_timeout_seconds` in `config.json`. |
+| `[stopped] Agent reached the step limit` | Rephrase the request, or raise `max_steps`. |
+| `tools=0` at startup | There's no `.orvik/tools` in this folder. Start Orvik in a folder that has one. |
+| `Tool error: ... tool.json: ...` at startup | That tool's `tool.json` has a mistake; the message says which file and what's wrong. |
+| `[config] ... Keeping the previous settings.` | `config.json` has a mistake (bad JSON or an unknown setting); fix it and send your next message. |
+| `command not found: orvik` | Use `.venv/bin/orvik`, or install the command with `uv tool install`. |
+| Answers get slow in a long chat | `/reset`. The whole conversation is resent on every step. |
 
----
+## More
 
-## Known limitations / next steps
-
-- **No tools yet.** That is the next planning step.
-- **History is not trimmed.** A long session will eventually go past the
-  model's context window. Trimming must keep each assistant `tool_calls`
-  message together with its `tool` replies.
-- **Thread-mode timeouts don't stop the work**: the function may keep
-  running. Use process mode for anything that can hang.
-- **Approval is only in the terminal.** `ApprovalProvider` is a protocol, so
-  a Slack or web approver can be plugged in without changing the gateway.
-- **The authorization store is in memory** and is cleared on restart.
-- **Tool calls run one after another** even when the model asks for several at once.
-  The Codex backend asks for one tool per step.
-- **Codex calls are slow and resend everything**: each step starts a new
-  `codex exec` process and sends the full conversation. Long chats with
-  many tool steps get slower; trimming the history helps here too.
+- **[ARCHITECTURE.md](ARCHITECTURE.md):** how Orvik works inside (agent loop, safety pipeline, AI backends, tool format, tests)
+- **[ROADMAP.md](ROADMAP.md):** what's built and what's next
