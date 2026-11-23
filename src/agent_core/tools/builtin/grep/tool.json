@@ -1,0 +1,17 @@
+{
+  "name": "grep",
+  "description": "Search text files in the workspace for a word or phrase and return matching lines with file paths and line numbers. Stops after max_matches and says if there were more. Skips binary files, files over 1 MB, secret files, and folders like .git, .venv and node_modules. Use path or glob to narrow the search.",
+  "risk_level": "read",
+  "mode": "process",
+  "timeout_seconds": 30,
+  "parameters": {
+    "pattern": {"type": "string", "description": "Text to find (or a regular expression when regex is true)"},
+    "path": {"type": "string", "description": "Folder or file to search, relative to the workspace. Default \".\""},
+    "glob": {"type": "string", "description": "Only files whose name matches, e.g. \"*.py\""},
+    "regex": {"type": "boolean", "description": "Treat pattern as a regular expression. Default false"},
+    "ignore_case": {"type": "boolean", "description": "Ignore upper/lower case. Default true"},
+    "max_matches": {"type": "integer", "description": "Stop after this many matching lines. Default 50, max 500"}
+  },
+  "required": ["pattern"],
+  "run": {"python": "agent_core.tools.files:grep"}
+}

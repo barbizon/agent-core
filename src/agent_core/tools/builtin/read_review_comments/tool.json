@@ -1,0 +1,17 @@
+{
+  "name": "read_review_comments",
+  "description": "Review analytics, step 2: the next review comments that are not grouped yet (text, the code it was written on, the replies) and the patterns known so far with how often each was seen. Group them with save_review_patterns.",
+  "risk_level": "read",
+  "mode": "thread",
+  "timeout_seconds": 10,
+  "parameters": {
+    "limit": {
+      "type": "integer",
+      "description": "How many comments, at most 40 (default 40)"
+    }
+  },
+  "required": [],
+  "run": {
+    "python": "agent_core.tools.analytics:read_review_comments"
+  }
+}

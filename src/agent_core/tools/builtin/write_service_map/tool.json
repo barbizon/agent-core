@@ -1,0 +1,42 @@
+{
+  "name": "write_service_map",
+  "description": "Create or update a service's map in the library (~/.orwick/maps/<service>/), outside any session. Pass an object from doc name to its whole new Markdown. The user approves once, seeing every change. The service's folder and the services that take part are recorded with it.",
+  "risk_level": "write",
+  "mode": "thread",
+  "timeout_seconds": 5,
+  "parameters": {
+    "service": {
+      "type": "string",
+      "description": "The map's name from the request (e.g. 2026-11-18_083757_cd61_map1); empty: the next free <session>_mapN"
+    },
+    "docs": {
+      "type": "object",
+      "description": "{\"map\": \"...markdown...\", \"messages\": \"...\"}"
+    },
+    "question": {
+      "type": "string",
+      "description": "The question the scan answered, kept with the map"
+    },
+    "services": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The other services that take part in the mapped flows, as their folders: [\"../billing\", \"../catalog\"]"
+    },
+    "rebuild": {
+      "type": "boolean",
+      "description": "true when the request says rebuild: the map keeps only the docs written now"
+    }
+  },
+  "required": [
+    "service",
+    "docs"
+  ],
+  "run": {
+    "python": "agent_core.tools.service_map:write_service_map"
+  },
+  "preview": {
+    "python": "agent_core.tools.service_map:preview_service_map"
+  }
+}

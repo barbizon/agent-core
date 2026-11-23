@@ -1,7 +1,7 @@
 import io
 
 from agent_core.agent import Agent
-from agent_core.debug import Tracer, describe_event, pretty_json, summarize_messages
+from agent_core.debug import Tracer, describe_event, conversation_counts, pretty_json
 from agent_core.llm import ModelResponse, ToolCall
 from agent_core.llm.codex_model import CodexCLIModel
 from agent_core.permissions import PermissionPolicy, RiskLevel
@@ -87,18 +87,13 @@ def test_failed_check_marks_the_point_red():
     assert describe_event("something.new", {"a": 1})[0] == 'something.new: {"a": 1}'.join(["• ", ""])
 
 
-def test_summarize_messages():
-    text = summarize_messages([
-        {"role": "system", "content": "be nice\nalways"},
-        {"role": "assistant", "content": None, "tool_calls": [
-            {"id": "c1", "function": {"name": "echo", "arguments": '{"text":"hi"}'}}]},
-        {"role": "tool", "tool_call_id": "c1", "content": '{"ok": true}'},
-    ])
-    assert text.splitlines() == [
-        "[system] be nice always",
-        '[assistant → tool call c1] echo {"text":"hi"}',
-        '[tool result c1] {"ok": true}',
-    ]
+def test_conversation_counts():
+    assert conversation_counts([
+        {"role": "system", "content": "be nice"},
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": None, "tool_calls": []},
+        {"role": "tool", "tool_call_id": "c1", "content": "four"},
+    ]) == "4 messages (1 instructions, 1 from you, 1 from the AI, 1 tool results), 13 characters"
 
 
 def test_pretty_json():
@@ -121,20 +116,19 @@ def test_agent_traces_the_whole_pipeline_including_a_write_tool(make_gateway, au
     assert in_order(
         out.getvalue(),
         'REQUEST #1 · "save hi"',
-        "① CLI → Agent · user input", "save hi",
-        "② Agent · history sent to model (2 messages)",
-        "③ Agent → ScriptedModel · step 1", "tools offered: save",
-        "④ Adapter → Agent · decision", 'tool_call: save {"text": "hi"}',
-        "⑤ Agent → Gateway · tool call",
-        "⑥ Gateway · safety checks for 'save'",
+        "① You → Orwick · your message", "save hi",
+        "② Orwick · step 1 of max", "asking ScriptedModel",
+        "conversation so far: 2 messages", "tools offered: save",
+        "③ Orwick · what ScriptedModel decided", 'tool call: save {"text": "hi"}',
+        "④ Orwick → tool save · call", '"text": "hi"',
+        "⑤ Orwick · safety checks for tool save",
         "✓ permission: risk 'write' is allowed",
         "? approval: asking the human", "✓ approval: granted",
         "✓ one-time token issued", "▶ executing (mode: thread)", "✓ done",
-        "⑦ Gateway → Agent · tool result", '"echo": "hi"',
-        "⑧ Agent · history sent to model (4 messages)",
-        "⑨ Agent → ScriptedModel · step 2",
-        "⑩ Adapter → Agent · decision", "final_answer: saved",
-        "⑪ Agent → CLI · final answer", "saved", "2 step(s)",
+        "⑥ tool save → Orwick · result (sent to ScriptedModel in the next step)", '"echo": "hi"',
+        "⑦ Orwick · step 2 of max", "conversation so far: 4 messages",
+        "⑧ Orwick · what ScriptedModel decided", "final answer: saved",
+        "⑨ Orwick → You · final answer", "saved", "2 step(s)",
     )
 
 
@@ -145,9 +139,9 @@ def test_codex_adapter_traces_exact_request_and_raw_output():
     CodexCLIModel(runner=runner, tracer=t).complete([{"role": "user", "content": "hello there"}], [])
     assert in_order(
         out.getvalue(),
-        "① Codex adapter → codex exec · command + prompt (stdin)",
+        "① Orwick → Codex · command + prompt (stdin)",
         "$ codex exec --json", "hello there",
-        "② codex exec → Codex adapter · raw output", "exit 0",
+        "② Codex → Orwick · raw reply", "exit 0",
         "thread.started", "item.completed (agent_message):", '"answer": "Hi!"',
         "turn.completed",
     )
@@ -167,7 +161,7 @@ def test_errors_are_traced(make_gateway, audit):
         agent.send("x")
     except RuntimeError:
         pass
-    assert "Agent → CLI · error (RuntimeError)" in out.getvalue()
+    assert "Orwick → You · error (RuntimeError)" in out.getvalue()
 
 
 def test_request_numbers_continue_while_disabled_and_across_tracers():

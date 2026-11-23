@@ -1,0 +1,50 @@
+{
+  "title": "Code review checklist",
+  "hint": "Check finished code against a review checklist (Review code) and score it, 100 minus deductions (Code Scoring): this session's pull request, or one you give the link of. Your team's own rules can be added as a skill. Reports only; changes no code.",
+  "actions": [
+    {
+      "id": "review-code",
+      "label": "Review code",
+      "icon": "checklist",
+      "inputs": [
+        {
+          "name": "own",
+          "label": "Review this session's PR?",
+          "yes_no": true
+        },
+        {
+          "name": "pr",
+          "label": "PR link",
+          "pattern": "^https://bitbucket\\.org/[\\w.-]+/[\\w.-]+/pull-requests/\\d+\\S*$",
+          "unless": "own",
+          "default": "this session's pull request"
+        }
+      ],
+      "max_steps": 60,
+      "prompt": "Review {pr} with the code review checklist. Write the review-findings doc.",
+      "hint": "Asks whether to review this session's pull request or another one (you paste its link), then goes through the code review checklist (security, tests, errors, design, style, API) on it. Writes the findings to the Review Findings tab. Changes no code."
+    },
+    {
+      "id": "grade-code",
+      "label": "Code Scoring",
+      "icon": "gauge.with.dots.needle.67percent",
+      "inputs": [
+        {
+          "name": "own",
+          "label": "Score this session's PR?",
+          "yes_no": true
+        },
+        {
+          "name": "pr",
+          "label": "PR link",
+          "pattern": "^https://bitbucket\\.org/[\\w.-]+/[\\w.-]+/pull-requests/\\d+\\S*$",
+          "unless": "own",
+          "default": "this session's pull request"
+        }
+      ],
+      "max_steps": 60,
+      "prompt": "Grade {pr} against the session's ticket with the code review score. Write the grade doc.",
+      "hint": "Asks whether to score this session's pull request or another one (you paste its link), then scores it against the session's ticket: starts at 100, takes points off per finding, gives A–D and what must be fixed. Writes the Grade tab. Changes no code."
+    }
+  ]
+}

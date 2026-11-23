@@ -2,7 +2,7 @@
 
 Layout (one folder per tool; the folder name must equal the tool name)::
 
-    .orvik/tools/
+    .orwick/tools/
     └── read_file/
         └── tool.json
 
@@ -19,7 +19,8 @@ A ``tool.json``::
         "path": {"type": "string", "description": "Path relative to the workspace"}
       },
       "required": ["path"],                 # optional, default: none required
-      "run": {"python": "agent_core.tools.files:read_file"}
+      "run": {"python": "agent_core.tools.files:read_file"},
+      "preview": {"python": "..."}          # optional: diff shown in the approval prompt
     }
 
 Loading is strict: an unknown key, a wrong type, a name that doesn't match its
@@ -38,9 +39,45 @@ from agent_core.retry import RetryPolicy
 from agent_core.tools.registry import ExecutionMode, ToolDefinition
 
 MANIFEST_NAME = "tool.json"
+
+# The code decides how risky each of Orwick's tool functions is, not the tool.json:
+# a tool.json may only run these, and may not declare a lower risk. Otherwise a
+# project could ship a tool.json that runs write_file as "read", without approval.
+CORE_PREFIX = "agent_core.tools."
+TOOL_FUNCTIONS: dict[str, RiskLevel] = {
+    "agent_core.tools.files:read_file": RiskLevel.READ,
+    "agent_core.tools.files:list_folder": RiskLevel.READ,
+    "agent_core.tools.files:grep": RiskLevel.READ,
+    "agent_core.tools.files:write_file": RiskLevel.WRITE,
+    "agent_core.tools.files:edit_file": RiskLevel.WRITE,
+    "agent_core.tools.commands:run_command": RiskLevel.DANGEROUS,
+    "agent_core.tools.knowledge:use_skill": RiskLevel.READ,
+    "agent_core.tools.knowledge:read_session_doc": RiskLevel.READ,
+    "agent_core.tools.knowledge:write_session_doc": RiskLevel.WRITE,
+    "agent_core.tools.knowledge:write_session_docs": RiskLevel.WRITE,
+    "agent_core.tools.service_map:read_service_map": RiskLevel.READ,
+    "agent_core.tools.service_map:write_service_map": RiskLevel.WRITE,
+    "agent_core.tools.pull_request:read_pull_request": RiskLevel.READ,
+    # Review analytics keeps its own store (~/.orwick/analytics): suggestions you switch on in the app.
+    "agent_core.tools.analytics:collect_review_comments": RiskLevel.READ,
+    "agent_core.tools.analytics:read_review_comments": RiskLevel.READ,
+    "agent_core.tools.analytics:save_review_patterns": RiskLevel.READ,
+    "agent_core.tools.analytics:save_analytics_report": RiskLevel.READ,
+    # Read-level itself: the helper's own calls go through the gateway and ask as usual.
+    "agent_core.tools.subagent:run_subagent": RiskLevel.READ,
+}
+PREVIEW_FUNCTIONS = {
+    "agent_core.tools.files:preview_write",
+    "agent_core.tools.files:preview_edit",
+    "agent_core.tools.commands:preview_command",
+    "agent_core.tools.knowledge:preview_session_doc",
+    "agent_core.tools.knowledge:preview_session_docs",
+    "agent_core.tools.service_map:preview_service_map",
+}
+RISK_ORDER = {RiskLevel.READ: 0, RiskLevel.WRITE: 1, RiskLevel.DANGEROUS: 2}
 REQUIRED_KEYS = {"name", "description", "risk_level", "parameters", "run"}
-OPTIONAL_KEYS = {"mode", "timeout_seconds", "retry_attempts", "required"}
-PARAMETER_KEYS = {"type", "description", "enum"}
+OPTIONAL_KEYS = {"mode", "timeout_seconds", "retry_attempts", "required", "preview"}
+PARAMETER_KEYS = {"type", "description", "enum", "items"}   # items: an array's element schema
 RUN_KINDS = {"python"}  # "command" (any language) comes next
 
 
@@ -113,6 +150,12 @@ def load_manifest(path: str | Path, allowed_modules: tuple[str, ...]) -> ToolDef
         raise fail("retry_attempts must be a whole number")
 
     function = _resolve_run(data["run"], allowed_modules, fail)
+    preview = _resolve_run(data["preview"], allowed_modules, fail) if "preview" in data else None
+    _check_core_target(data["run"], risk, fail)
+    if "preview" in data:
+        target = str(next(iter(data["preview"].values())))
+        if target.startswith(CORE_PREFIX) and target not in PREVIEW_FUNCTIONS:
+            raise fail(f"preview {target!r} is not one of Orwick's previews")
 
     try:
         return ToolDefinition(
@@ -125,9 +168,22 @@ def load_manifest(path: str | Path, allowed_modules: tuple[str, ...]) -> ToolDef
             execution_mode=mode,
             timeout_seconds=float(timeout),
             retry_policy=RetryPolicy(max_attempts=attempts),
+            preview=preview,
         )
     except ValueError as exc:  # the safety rules in ToolDefinition
         raise fail(str(exc)) from exc
+
+
+def _check_core_target(run: dict[str, Any], risk: RiskLevel, fail: Callable[[str], ToolManifestError]) -> None:
+    """For Orwick's own code: only its tool functions, never at a lower risk than the code says."""
+    target = str(next(iter(run.values())))
+    if not target.startswith(CORE_PREFIX):
+        return
+    if target not in TOOL_FUNCTIONS:
+        raise fail(f"{target!r} is not one of Orwick's tool functions")
+    least = TOOL_FUNCTIONS[target]
+    if RISK_ORDER[risk] < RISK_ORDER[least]:
+        raise fail(f"risk_level {risk.value!r} is too low: {target} is at least {least.value!r}")
 
 
 def _parameters(raw: Any, fail: Callable[[str], ToolManifestError]) -> dict[str, dict[str, Any]]:

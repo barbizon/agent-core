@@ -1,0 +1,12 @@
+{
+  "name": "read_session_doc",
+  "description": "Read one of this session's docs (Markdown notes kept with the session), or list them when no name is given. Read the relevant doc first when continuing earlier work.",
+  "risk_level": "read",
+  "mode": "thread",
+  "timeout_seconds": 5,
+  "parameters": {
+    "name": {"type": "string", "description": "The doc's name, e.g. product-requirement; empty to list the docs"}
+  },
+  "required": [],
+  "run": {"python": "agent_core.tools.knowledge:read_session_doc"}
+}

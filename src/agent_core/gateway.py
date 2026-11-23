@@ -53,7 +53,7 @@ class ToolGateway:
     def execute(self, run_id: str, tool_name: str, arguments: dict[str, Any]) -> ToolResult:
         """Run one tool call through all safety checks and return the result."""
         # In debug mode, every step below is collected and shown as one framed point.
-        with self.tracer.collect_checks(f"Gateway · safety checks for '{tool_name}'"):
+        with self.tracer.collect_checks(f"Orwick · safety checks for tool {tool_name}"):
             return self._execute(run_id, tool_name, arguments)
 
     def _execute(self, run_id: str, tool_name: str, arguments: dict[str, Any]) -> ToolResult:
@@ -86,6 +86,19 @@ class ToolGateway:
         # 4-5. human approval, then (and only then) a one-time authorization
         authorization: ActionAuthorization | None = None
         if tool.risk_level != RiskLevel.READ:
+            # Preview first: show the real change (e.g. a diff), and stop early if the
+            # call can't succeed anyway, so nobody is asked to approve a doomed action.
+            preview: str | None = None
+            if tool.preview is not None:
+                try:
+                    preview = str(run_in_thread(
+                        tool.preview, arguments, tool.timeout_seconds, f"{tool.name}-preview"
+                    ))
+                except ToolExecutionError as exc:
+                    audit("tool.preview_failed", error_type=exc.error_type, error=str(exc))
+                    return ToolResult.failure(exc.error_type, str(exc))
+                audit("tool.preview_ready", lines=preview.count("\n") + 1)
+
             audit("tool.approval_requested", arguments=arguments)
             try:
                 approved = self.approval_provider.approve(
@@ -94,6 +107,7 @@ class ToolGateway:
                         tool_name=tool_name,
                         arguments=dict(arguments),
                         risk_level=tool.risk_level,
+                        preview=preview,
                     )
                 )
             except Exception as exc:  # a broken approver must fail closed

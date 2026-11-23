@@ -1,0 +1,15 @@
+{
+  "name": "write_file",
+  "description": "Create a new UTF-8 text file, or replace a whole existing file. To replace an existing file, read it first and pass its version. Missing folders are created. For small changes to an existing file, prefer edit_file.",
+  "risk_level": "write",
+  "mode": "thread",
+  "timeout_seconds": 5,
+  "parameters": {
+    "path": {"type": "string", "description": "Path relative to the workspace folder"},
+    "content": {"type": "string", "description": "The full new file content"},
+    "version": {"type": "string", "description": "The version from read_file. Required when the file already exists"}
+  },
+  "required": ["path", "content"],
+  "run": {"python": "agent_core.tools.files:write_file"},
+  "preview": {"python": "agent_core.tools.files:preview_write"}
+}

@@ -9,7 +9,7 @@ from agent_core.permissions import PermissionPolicy
 from agent_core.tools import TOOL_MODULE_PREFIX, build_registry, files
 from tests.conftest import RecordingApprover
 
-REPO_TOOLS = __import__("pathlib").Path(__file__).parents[1] / ".orvik" / "tools"
+REPO_TOOLS = __import__("pathlib").Path(__file__).parents[1] / "src" / "agent_core" / "tools" / "builtin"
 
 
 @pytest.fixture
@@ -63,7 +63,9 @@ def test_read_file_returns_content(workspace):
     (workspace / "notes").mkdir()
     (workspace / "notes" / "todo.txt").write_text("buy milk", encoding="utf-8")
 
-    assert files.read_file("notes/todo.txt") == {"path": "notes/todo.txt", "content": "buy milk"}
+    result = files.read_file("notes/todo.txt")
+    assert result["path"] == "notes/todo.txt" and result["content"] == "buy milk"
+    assert result["version"] == files.file_version(b"buy milk")
 
 
 def test_read_file_refuses_binary(workspace):
@@ -81,9 +83,9 @@ def test_read_file_refuses_too_big(workspace, monkeypatch):
 
 def test_write_file_creates_folders_and_overwrites(workspace):
     first = files.write_file("out/report.md", "v1")
-    second = files.write_file("out/report.md", "v2")
+    second = files.write_file("out/report.md", "v2", version=first["version"])
 
-    assert first == {"path": "out/report.md", "created": True, "bytes_written": 2}
+    assert first["created"] is True and first["bytes_written"] == 2
     assert second["created"] is False
     assert (workspace / "out" / "report.md").read_text() == "v2"
 
@@ -126,3 +128,27 @@ def test_write_file_needs_write_permission_and_approval(workspace, file_gateway)
     assert denied.error.type == "permission_denied"
     assert allowed.ok and len(approver.requests) == 1
     assert (workspace / "a.txt").read_text() == "x"
+
+
+def test_read_file_can_read_just_some_lines(tmp_path, monkeypatch):
+    from agent_core.tools import files as f
+    monkeypatch.setenv(f.WORKSPACE_ENV, str(tmp_path))
+    (tmp_path / "big.go").write_text("".join(f"line {i}\n" for i in range(1, 501)))
+    whole = f.read_file("big.go")
+    part = f.read_file("big.go", start_line=200, line_count=3)
+    assert part["content"] == "line 200\nline 201\nline 202\n"
+    assert (part["start_line"], part["end_line"], part["total_lines"]) == (200, 202, 500)
+    assert part["version"] == whole["version"]          # still good for an edit afterwards
+    assert f.read_file("big.go", start_line=499, line_count=50)["end_line"] == 500
+    assert f.read_file("big.go", start_line=1, line_count=5000)["end_line"] == 500   # capped at 2000 lines
+    assert "start_line" not in whole
+
+
+def test_grep_returns_what_it_found_when_the_folder_is_too_big(tmp_path, monkeypatch):
+    from agent_core.tools import files as f
+    monkeypatch.setenv(f.WORKSPACE_ENV, str(tmp_path))
+    for i in range(5):
+        (tmp_path / f"f{i}.txt").write_text("needle\n")
+    monkeypatch.setattr(f, "GREP_TIME_BUDGET", -1)        # out of time at once
+    result = f.grep("needle")
+    assert result["truncated"] is True and "the folder is big" in result["note"]

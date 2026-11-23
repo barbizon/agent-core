@@ -1,0 +1,13 @@
+{
+  "name": "write_session_docs",
+  "description": "Create or replace several of this session's docs at once (e.g. the feature-docs tabs). Pass an object from doc name to its whole new Markdown. The user approves once, seeing every change. Docs that didn't change are skipped.",
+  "risk_level": "write",
+  "mode": "thread",
+  "timeout_seconds": 5,
+  "parameters": {
+    "docs": {"type": "object", "description": "{\"product-requirement\": \"...markdown...\", \"todo\": \"...\"}"}
+  },
+  "required": ["docs"],
+  "run": {"python": "agent_core.tools.knowledge:write_session_docs"},
+  "preview": {"python": "agent_core.tools.knowledge:preview_session_docs"}
+}

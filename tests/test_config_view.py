@@ -3,6 +3,8 @@ import argparse
 import pytest
 
 from agent_core.config import Settings
+import re
+
 from agent_core.config_view import config_items, describe_config, source_of
 from agent_core.debug import Tracer
 from agent_core.permissions import PermissionPolicy
@@ -18,8 +20,8 @@ def clean_env(monkeypatch):
 
 
 def args(**overrides):
-    values = dict(backend=None, model=None, max_steps=None, debug=False, env_file=".orvik/.env",
-                  config=".orvik/config.json")
+    values = dict(backend=None, model=None, max_steps=None, debug=False, env_file=".orwick/.env",
+                  config=".orwick/config.json")
     values.update(overrides)
     return argparse.Namespace(**values)
 
@@ -35,7 +37,9 @@ def test_every_setting_has_a_value_source_and_meaning():
     report = items()
     assert set(report) == {"backend", "model", "openai_api_key", "max_steps",
                            "request_timeout_seconds", "max_tool_result_chars", "audit_log",
-                           "workspace", "permissions", "debug", "config_file", "env_file"}
+                           "workspace", "code_root", "permissions", "debug", "config_file", "env_file",
+                           "main_config_file", "history_budget_tokens",
+                           "history_warn_percent", "tools", "claude_tools", "codex_tools", "skills", "trace"}
     assert all(item.value and item.source and item.meaning for item in report.values())
 
 
@@ -43,7 +47,7 @@ def test_sources_flag_beats_file_beats_env_beats_default():
     env = {"AGENT_MODEL": "m"}
     assert source_of("--model", None, "model", {}, {}) == "default"
     assert source_of("--model", None, "model", {}, env) == ".env / environment: AGENT_MODEL"
-    assert source_of("--model", None, "model", {"model": "f"}, env) == ".orvik/config.json"
+    assert source_of("--model", None, "model", {"model": "f"}, env) == ".orwick/config.json"
     assert source_of("--model", "x", "model", {"model": "f"}, env) == "flag --model"
     # null in the file means "not set here": the next level decides
     assert source_of("--model", None, "model", {"model": None}, env) == ".env / environment: AGENT_MODEL"
@@ -54,7 +58,7 @@ def test_api_key_value_is_never_shown(monkeypatch):
     text = describe_config(Settings(backend="openai", openai_api_key="sk-secret-123"),
                            args(), PermissionPolicy(), Tracer())
     assert "sk-secret-123" not in text
-    assert "openai_api_key = set" in text
+    assert re.search(r"openai_api_key\s+set\s+◂", text)
 
 
 def test_values_reflect_the_running_setup(tmp_path, monkeypatch):

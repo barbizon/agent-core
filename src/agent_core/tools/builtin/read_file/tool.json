@@ -1,0 +1,14 @@
+{
+  "name": "read_file",
+  "description": "Read a UTF-8 text file from the workspace (up to 200 KB), whole or just some lines: pass start_line and line_count to read only part of it (e.g. the lines around a grep match). Use this, never run_command (sed, cat, head), to read files. Returns the content and a version of the whole file; to change the file later with write_file or edit_file, pass that version.",
+  "risk_level": "read",
+  "mode": "process",
+  "timeout_seconds": 5,
+  "parameters": {
+    "path": {"type": "string", "description": "Path relative to the workspace folder"},
+    "start_line": {"type": "integer", "description": "First line to read (1 = the first line). Default: the whole file"},
+    "line_count": {"type": "integer", "description": "How many lines to read from start_line (at most 2000)"}
+  },
+  "required": ["path"],
+  "run": {"python": "agent_core.tools.files:read_file"}
+}

@@ -47,7 +47,8 @@ def test_tool_call_round_trip(make_gateway, audit):
     tool_msg = messages[-1]
     assert tool_msg["role"] == "tool" and tool_msg["tool_call_id"] == "c1"
     assert json.loads(tool_msg["content"]) == {"ok": True, "data": {"echo": "hi"}}
-    assert [e.kind for e in events] == ["tool_call", "tool_result"]
+    assert [e.kind for e in events] == ["model_request", "model_response", "tool_call", "tool_result",
+                                        "step_done", "model_request", "model_response"]
 
 
 def test_malformed_arguments_become_structured_error(make_gateway, audit):
@@ -85,3 +86,24 @@ def test_reset_clears_conversation(make_gateway, audit):
     agent.send("x")
     agent.reset()
     assert [m["role"] for m in agent.messages] == ["system"]
+
+
+def test_near_the_step_limit_the_ai_is_told_to_wrap_up(make_gateway, audit):
+    # Researches for 4 steps, then (told to wrap up) answers on step 5 of 5.
+    model = ScriptedModel([ModelResponse(None, [call(f"c{i}")]) for i in range(4)] + [ModelResponse("partial")])
+    agent, _ = make_agent(model, make_gateway, audit, max_steps=5)
+    assert agent.send("research a lot") == "partial"
+    notes = [m for m in agent.messages if m["role"] == "user" and m["content"].startswith("[Orwick]")]
+    assert len(notes) == 1 and "Only 2 steps are left" in notes[0]["content"]
+    sent_on_step = [len([m for m in msgs if m["role"] == "user"]) for msgs, _ in model.calls]
+    assert sent_on_step == [1, 1, 1, 2, 2]          # the note arrives before step 4 (of 5)
+
+
+def test_one_message_can_have_more_steps(make_gateway, audit):
+    model = ScriptedModel([ModelResponse(None, [call(f"c{i}")]) for i in range(7)] + [ModelResponse("done")])
+    agent, _ = make_agent(model, make_gateway, audit, max_steps=3)
+    assert agent.send("big job", max_steps=10) == "done"
+    model = ScriptedModel([ModelResponse(None, [call(f"c{i}")]) for i in range(5)])
+    agent, _ = make_agent(model, make_gateway, audit, max_steps=3)
+    with pytest.raises(StepLimitExceeded, match="step limit \\(3\\)"):
+        agent.send("default limit")

@@ -1,0 +1,22 @@
+{
+  "name": "collect_review_comments",
+  "description": "Review analytics, step 1: read the review comments of pull requests from Bitbucket into Orwick's own store (~/.orwick/analytics), with the code each was written on and the replies. Reads only pull requests changed since the last run. Give repos the first time (remembered afterwards); it changes no project and posts nothing.",
+  "risk_level": "read",
+  "mode": "thread",
+  "timeout_seconds": 900,
+  "parameters": {
+    "repos": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Repos to learn from, as workspace/repo or as folder names in the workspace or code root, e.g. [\"acme/payments\", \"orders\"]; empty: the ones chosen before"
+    },
+    "months": {
+      "type": "integer",
+      "description": "How many months back to read; give it only to read further back than before (default 6 the first time)"
+    }
+  },
+  "required": [],
+  "run": {
+    "python": "agent_core.tools.analytics:collect_review_comments"
+  }
+}

@@ -49,3 +49,63 @@ def make_gateway(audit):
             process_executor=ProcessExecutor(allowed_module_prefixes=("tests.",)),
         )
     return factory
+
+
+@pytest.fixture(autouse=True)
+def main_config(tmp_path, monkeypatch):
+    """Point the main settings (~/.orwick/config.json) at an empty temp place, so tests never
+    read the real one. Tests that need main settings write to the returned path."""
+    from agent_core import cli, config_view
+
+    path = tmp_path / "home" / ".orwick" / "config.json"
+    monkeypatch.setattr(cli, "USER_CONFIG_FILE", path)
+    monkeypatch.setattr(cli, "USER_TOOLS_DIR", tmp_path / "home" / ".orwick" / "tools")
+    monkeypatch.setattr(config_view, "USER_CONFIG_FILE", path)
+    return path
+
+
+
+@pytest.fixture(autouse=True)
+def no_lock_wait(monkeypatch):
+    """Busy sessions fail at once in tests (the real wait is a few seconds)."""
+    from agent_core import sessions
+    monkeypatch.setattr(sessions, "LOCK_WAIT_SECONDS", 0)
+
+
+@pytest.fixture(autouse=True)
+def keep_signal_handlers():
+    """cli.main installs SIGHUP/SIGTERM handlers; put the old ones back after each test."""
+    import signal
+
+    saved = {sig: signal.getsignal(sig) for sig in (signal.SIGHUP, signal.SIGTERM)}
+    yield
+    for sig, handler in saved.items():
+        signal.signal(sig, handler)
+
+
+def hold_lock(path):
+    """Hold a session's lock the way another running Orwick would (returns the descriptor)."""
+    import fcntl
+    import os
+
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    os.write(fd, b"4242")
+    return fd
+
+
+@pytest.fixture(autouse=True)
+def tool_lines_on():
+    """cli.TRACE is shared; every test starts with tool lines shown."""
+    from agent_core import cli
+    cli.TRACE["on"] = True
+    yield
+    cli.TRACE["on"] = True
+
+
+@pytest.fixture(autouse=True)
+def no_claude_skills(tmp_path, monkeypatch):
+    """Tests never see the skills in your ~/.claude/skills."""
+    from agent_core import skills
+    monkeypatch.setattr(skills, "CLAUDE_SKILLS_DIR", tmp_path / "no-claude-skills")
+    monkeypatch.setattr(skills, "USER_SKILLS_DIR", tmp_path / "no-skills-of-yours")

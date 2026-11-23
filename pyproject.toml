@@ -1,5 +1,5 @@
 [project]
-name = "orvik"
+name = "orwick"
 version = "0.1.0"
 description = "Clean AI agent runtime with layered safety controls"
 requires-python = ">=3.11"
@@ -12,7 +12,7 @@ dependencies = [
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-orvik = "agent_core.cli:main"
+orwick = "agent_core.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -20,6 +20,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+agent_core = ["tools/builtin/*/tool.json", "skills_builtin/*/SKILL.md", "skills_builtin/*/ui.json", "skills_builtin/*/contract.json"]  # built-in tools and skills ship with Orwick
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

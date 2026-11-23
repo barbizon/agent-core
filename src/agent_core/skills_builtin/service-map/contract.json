@@ -1,0 +1,60 @@
+{
+ "format": 1,
+ "reads_code_root": true,
+ "only_these_docs": true,
+ "docs": {
+  "map": {
+   "title": "Map",
+   "required": true,
+   "diagrams": {
+    "flowchart": 1
+   }
+  },
+  "flows": {
+   "title": "Flows",
+   "required": true,
+   "tables": [
+    [
+     "#",
+     "Flow",
+     "Trigger",
+     "What it achieves"
+    ]
+   ],
+   "sections": {
+    "pattern": "^### \\d+\\. .+ — .+",
+    "min": 1,
+    "diagram": "sequenceDiagram"
+   }
+  },
+  "messages": {
+   "title": "Messages",
+   "tables": [
+    [
+     "Message",
+     "Exchange / topic · routing key",
+     "Sender (trigger)",
+     "Receivers → what each does with it",
+     "Key fields"
+    ]
+   ]
+  },
+  "calls": {
+   "title": "Calls",
+   "tables": [
+    [
+     "From",
+     "To",
+     "Route / RPC",
+     "Purpose"
+    ]
+   ]
+  },
+  "services": {
+   "title": "Services"
+  },
+  "open-questions": {
+   "title": "Open questions"
+  }
+ }
+}

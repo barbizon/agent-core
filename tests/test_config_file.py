@@ -1,6 +1,7 @@
 """The JSON config file: priority, validation, live-reload helpers, write protection."""
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -56,7 +57,7 @@ def test_api_key_is_never_read_from_the_file(tmp_path):
     ("{not json", "invalid JSON"),
     ("[1, 2]", "JSON object"),
     ('{"max_step": 5}', "unknown setting"),          # typo
-    ('{"max_steps": 0}', "at least 1"),
+    ('{"max_steps": -1}', "0 for no limit"),
     ('{"max_steps": true}', "whole number"),
     ('{"debug": "maybe"}', "true or false"),
     ('{"backend": "gemini"}', "backend must be one of"),
@@ -93,9 +94,9 @@ def restore_tool_env(monkeypatch):
 
 @pytest.fixture
 def project(tmp_path, monkeypatch):
-    """A working directory with an .orvik folder, exported the way the CLI does it."""
+    """A working directory with an .orwick folder, exported the way the CLI does it."""
     monkeypatch.chdir(tmp_path)
-    agent_dir = tmp_path / ".orvik"
+    agent_dir = tmp_path / ".orwick"
     (agent_dir / "tools" / "x").mkdir(parents=True)
     write(agent_dir / "config.json", {"max_steps": 5})
     (agent_dir / ".env").write_text("OPENAI_API_KEY=sk-secret")
@@ -109,18 +110,18 @@ def test_agent_folder_is_hidden_from_listings(project):
     assert names == ["notes.txt"]
 
 
-@pytest.mark.parametrize("path", [".orvik/.env", ".orvik/config.json", ".orvik", ".ORVIK/.env"])
+@pytest.mark.parametrize("path", [".orwick/.env", ".orwick/config.json", ".orwick", ".ORWICK/.env"])
 def test_agent_folder_cannot_be_read(project, path):
     with pytest.raises(PermanentToolError):
         files.read_file(path)
 
 
-@pytest.mark.parametrize("path", [".orvik/config.json", ".orvik/tools/evil/tool.json"])
+@pytest.mark.parametrize("path", [".orwick/config.json", ".orwick/tools/evil/tool.json"])
 def test_agent_folder_cannot_be_written(project, path):
     with pytest.raises(PermanentToolError, match="belongs to the agent"):
         files.write_file(path, '{"risk_level": "read"}')
-    assert json.loads((project / ".orvik" / "config.json").read_text()) == {"max_steps": 5}
-    assert not (project / ".orvik" / "tools" / "evil").exists()
+    assert json.loads((project / ".orwick" / "config.json").read_text()) == {"max_steps": 5}
+    assert not (project / ".orwick" / "tools" / "evil").exists()
 
 
 def test_custom_config_outside_the_folder_is_protected_too(project):
@@ -139,3 +140,12 @@ def test_export_for_tools_sets_and_clears_workspace(tmp_path, monkeypatch):
     assert files.workspace_root() == other.resolve()
     export_for_tools(Settings(), tmp_path / "c.json")
     assert files.workspace_root() == tmp_path.resolve()  # default: the start folder
+
+
+def test_tools_can_not_touch_the_main_settings(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv(files.PROTECTED_PATHS_ENV, raising=False)
+    main = tmp_path / "home" / ".orwick" / "config.json"
+    export_for_tools(Settings(), tmp_path / ".orwick" / "config.json", None, main)
+    protected = os.environ[files.PROTECTED_PATHS_ENV].split(os.pathsep)
+    assert str(main.resolve()) in protected and str(main.parent.resolve()) in protected

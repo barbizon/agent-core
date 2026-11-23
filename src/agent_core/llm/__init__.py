@@ -4,11 +4,14 @@ The agent talks to any backend through the ``ChatModel`` protocol, using
 OpenAI-style message dicts as the history format:
 
 * ``CodexCLIModel``  — uses the local ``codex`` CLI (ChatGPT subscription login).
+* ``ClaudeCLIModel`` — uses the local ``claude`` CLI (Claude subscription login).
 * ``OpenAIChatModel`` — uses the OpenAI API (needs a paid API key).
 """
 
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+
+MAX_CALLS_PER_REPLY = 8   # tool calls run from one reply; the rest get an error and are not run
 
 
 @dataclass(frozen=True)
@@ -48,4 +51,4 @@ class ChatModel(Protocol):
         ...
 
 
-__all__ = ["ChatModel", "ModelResponse", "ToolCall"]
+__all__ = ["MAX_CALLS_PER_REPLY", "ChatModel", "ModelResponse", "ToolCall"]

@@ -1,0 +1,13 @@
+{
+  "name": "use_skill",
+  "description": "Load a skill's instructions before doing a task it covers (the Skills list in your instructions names them). Returns the instructions and the skill's other files. To read one of those files (or one the instructions link to, like ../shared/rules.md), call it again with file set to that path.",
+  "risk_level": "read",
+  "mode": "thread",
+  "timeout_seconds": 5,
+  "parameters": {
+    "name": {"type": "string", "description": "The skill's name, as in the Skills list"},
+    "file": {"type": "string", "description": "Optional: a file of the skill to read, relative to its folder (e.g. references/conventions.md)"}
+  },
+  "required": ["name"],
+  "run": {"python": "agent_core.tools.knowledge:use_skill"}
+}

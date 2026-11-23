@@ -1,0 +1,26 @@
+{
+  "title": "Service map",
+  "hint": "Find the flows this service offers and map how each connects to the whole system: messages, receivers and why, calls. Saved to the map library (Service maps in the sidebar), outside any session.",
+  "actions": [
+    {
+      "id": "map",
+      "label": "Service map",
+      "icon": "point.3.connected.trianglepath.dotted",
+      "max_steps": 80,
+      "prompt": "Use the service-map skill: find the flows this service offers and how each connects to the other repos in the code root.",
+      "hint": "Asks whether to map the whole current folder or one flow you describe. Finds the flows (routes, consumers, workers), follows each into the other repos (read only) and draws how it connects: messages and their receivers, calls, tables.",
+      "inputs": [
+        {
+          "name": "whole",
+          "label": "Map the whole current folder?",
+          "yes_no": true
+        },
+        {
+          "name": "flow",
+          "label": "Describe the flow to map",
+          "unless": "whole"
+        }
+      ]
+    }
+  ]
+}

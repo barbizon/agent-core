@@ -1,0 +1,14 @@
+{
+  "name": "run_subagent",
+  "description": "Hand a self-contained side task to a helper agent with a fresh, empty conversation (e.g. 'review these 3 files against rule X', 'find every caller of Y and summarize'). It has Orwick's read-only tools (files, grep, skills, Jira) unless allow_changes is true; writes and commands still ask the user. Only its final report comes back, so its file reads don't fill your conversation. Give it everything it needs in task: it can't see this conversation.",
+  "risk_level": "read",
+  "mode": "thread",
+  "timeout_seconds": 1800,
+  "parameters": {
+    "task": {"type": "string", "description": "The whole task: goal, files or names to look at, and what to report back"},
+    "allow_changes": {"type": "boolean", "description": "Also give it the tools that change files or run commands (each still asks the user). Default false"},
+    "max_steps": {"type": "integer", "description": "Its step limit, 1-60 (default 30)"}
+  },
+  "required": ["task"],
+  "run": {"python": "agent_core.tools.subagent:run_subagent"}
+}

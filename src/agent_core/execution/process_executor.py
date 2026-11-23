@@ -72,6 +72,9 @@ class ProcessExecutor:
                 f"Tool exceeded the {timeout_seconds}s execution deadline",
                 error_type="timeout",
             )
+        except BaseException:   # Ctrl+C: the worker and what it started stop too
+            self._terminate(process)
+            raise
 
         if process.returncode != 0:
             raise ToolExecutionError(

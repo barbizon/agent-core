@@ -1,0 +1,14 @@
+{
+  "title": "Review analytics",
+  "hint": "Learn from past pull request reviews: which issues reviewers raise again and again. Switch the ones that count on in the Analytics screen, and Review code looks for them.",
+  "actions": [
+    {
+      "id": "learn",
+      "label": "Learn from PRs",
+      "icon": "chart.bar.xaxis",
+      "max_steps": 80,
+      "prompt": "Use the review-analytics skill: collect the new pull request review comments and group them into the common review issues.",
+      "hint": "Reads the review comments of pull requests changed since last time (asks which repos the first time) and groups them into common issues, with how often each was seen. Changes no code and posts nothing."
+    }
+  ]
+}

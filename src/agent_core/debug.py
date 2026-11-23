@@ -1,16 +1,19 @@
-"""Debug tracing: follow one request through the whole pipeline (``orvik -d``).
+"""Debug tracing: follow one request through the whole pipeline (``orwick -d``).
 
 Each user message starts a new REQUEST banner. Every hop in the pipeline is
 printed as a numbered point, showing who hands what to whom:
 
-    ① CLI → Agent              your message
-    ② Agent                    the history that will be sent to the model
-    ③ Agent → adapter          which step, which tools are offered
-    ④ adapter → model          the exact request (codex command + prompt / API JSON)
-    ⑤ model → adapter          the raw reply, token usage and time
-    ⑥ adapter → Agent          the parsed decision: final answer or tool call
-       (tool call?)  Agent → Gateway → safety checks → tool result → back to ②
-    ⑦ Agent → CLI              the final answer
+    ① You → Orwick             your message
+    ② Orwick                   which step, how big the conversation is, the tools offered
+    ③ Orwick → Claude          exactly what is sent (Codex: command + prompt; OpenAI: request JSON)
+    ④ Claude → Orwick          the raw reply, token usage and time
+    ⑤ Orwick                   what the AI decided: final answer or tool call
+       (tool call?)  Orwick → tool X · call, safety checks, tool X → Orwick · result, back to ②
+    ⑥ Orwick → You             the final answer
+
+The parties are always You, Orwick, the AI (Claude, Codex or OpenAI) and a tool
+by its name. A title with an arrow is a message from one to the other, shown
+whole: nothing is shortened. A title with only "Orwick" is what Orwick does itself.
 
 When disabled (the default), every method returns immediately, so the rest
 of the code can call the tracer freely.
@@ -152,6 +155,10 @@ def describe_event(event_type: str, d: dict[str, Any]) -> tuple[str, bool]:
             if d.get("permitted"):
                 return f"✓ permission: risk '{d.get('risk_level')}' is allowed", True
             return f"✗ permission: risk '{d.get('risk_level')}' is NOT allowed", False
+        case "tool.preview_ready":
+            return f"✓ preview ready for the approval prompt ({d.get('lines')} lines)", True
+        case "tool.preview_failed":
+            return f"✗ preview failed ({d.get('error_type')}): {d.get('error')}", False
         case "tool.approval_requested":
             return "? approval: asking the human", True
         case "tool.approval_granted":
@@ -181,20 +188,12 @@ def describe_event(event_type: str, d: dict[str, Any]) -> tuple[str, bool]:
     return f"• {event_type}: {j(d)}", True
 
 
-def summarize_messages(messages: list[dict[str, Any]], limit: int = 300) -> str:
-    """One line per history message: who said it and (the start of) what was said."""
-    lines = []
-    for m in messages:
-        role = m.get("role", "?")
-        if role == "tool":
-            lines.append(f"[tool result {m.get('tool_call_id')}] {_short(m.get('content'), limit)}")
-            continue
-        if m.get("content"):
-            lines.append(f"[{role}] {_short(m['content'], limit)}")
-        for call in m.get("tool_calls", []):
-            fn = call["function"]
-            lines.append(f"[{role} → tool call {call['id']}] {fn['name']} {fn['arguments']}")
-    return "\n".join(lines)
+def conversation_counts(messages: list[dict[str, Any]]) -> str:
+    """How big the conversation is: the messages are shown whole where they are sent."""
+    names = {"system": "instructions", "user": "from you", "assistant": "from the AI", "tool": "tool results"}
+    counts = [f"{sum(m.get('role') == role for m in messages)} {name}" for role, name in names.items()]
+    chars = sum(len(str(m.get("content") or "")) for m in messages)
+    return f"{len(messages)} messages ({', '.join(counts)}), {chars:,} characters"
 
 
 def pretty_json(text: str) -> str:
@@ -203,9 +202,3 @@ def pretty_json(text: str) -> str:
         return json.dumps(json.loads(text), indent=2, ensure_ascii=False)
     except (TypeError, ValueError):
         return text
-
-
-def _short(value: Any, limit: int) -> str:
-    """Squash whitespace and cut long text with an ellipsis."""
-    text = " ".join(str(value).split())
-    return text if len(text) <= limit else text[: limit - 1] + "…"

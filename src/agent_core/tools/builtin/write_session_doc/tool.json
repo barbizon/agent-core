@@ -1,0 +1,14 @@
+{
+  "name": "write_session_doc",
+  "description": "Create or replace one of this session's docs: Markdown notes kept with the session (they come back when it is resumed). Pass the whole new content. The user approves every write.",
+  "risk_level": "write",
+  "mode": "thread",
+  "timeout_seconds": 5,
+  "parameters": {
+    "name": {"type": "string", "description": "A plain lowercase name, e.g. product-requirement"},
+    "content": {"type": "string", "description": "The whole doc, in Markdown"}
+  },
+  "required": ["name", "content"],
+  "run": {"python": "agent_core.tools.knowledge:write_session_doc"},
+  "preview": {"python": "agent_core.tools.knowledge:preview_session_doc"}
+}

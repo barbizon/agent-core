@@ -11,7 +11,7 @@ from agent_core.tools import TOOL_MODULE_PREFIX
 from agent_core.tools.manifest import load_tools
 from agent_core.tools.registry import ExecutionMode
 
-REPO_TOOLS = Path(__file__).parents[1] / ".orvik" / "tools"
+REPO_TOOLS = Path(__file__).parents[1] / "src" / "agent_core" / "tools" / "builtin"
 ALLOWED = (TOOL_MODULE_PREFIX, "tests.")
 
 GOOD = {
@@ -36,8 +36,11 @@ def make_tool(tools_dir: Path, manifest, folder="echo") -> Path:
 
 def test_the_repo_tools_load():
     tools = {t.name: t for t in load_tools(REPO_TOOLS, (TOOL_MODULE_PREFIX,))}
-    assert sorted(tools) == ["list_folder", "read_file", "write_file"]
+    assert sorted(tools) == ["collect_review_comments", "edit_file", "grep", "list_folder", "read_file", "read_pull_request", "read_review_comments", "read_service_map", "read_session_doc", "run_command", "run_subagent", "save_analytics_report", "save_review_patterns", "use_skill", "write_file", "write_service_map", "write_session_doc", "write_session_docs"]
+    assert tools["edit_file"].preview is not None and tools["write_file"].preview is not None
     assert tools["write_file"].risk_level == RiskLevel.WRITE
+    assert tools["run_command"].risk_level == RiskLevel.DANGEROUS
+    assert tools["run_command"].preview is not None
     assert tools["read_file"].execution_mode == ExecutionMode.PROCESS
     assert tools["read_file"].required == ["path"]
     assert tools["list_folder"].required == []  # "path" is optional

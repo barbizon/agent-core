@@ -1,0 +1,15 @@
+{
+  "name": "run_command",
+  "description": "Run a shell command (/bin/sh -c) in the workspace, e.g. tests or git status. It runs inside a sandbox: it can write only inside the workspace, has no network, cannot read the home folder or secret files, and starts with an empty environment (HOME is a temporary folder). There is no input; interactive commands will not work. Returns exit_code and output (long output keeps its start and end). The user approves every command.",
+  "risk_level": "dangerous",
+  "mode": "thread",
+  "timeout_seconds": 320,
+  "parameters": {
+    "command": {"type": "string", "description": "The shell command, e.g. \"pytest -q\". Pipes and && are allowed"},
+    "cwd": {"type": "string", "description": "Folder to run in, relative to the workspace. Default \".\""},
+    "timeout_seconds": {"type": "integer", "description": "Stop the command after this many seconds. Default 60, max 300"}
+  },
+  "required": ["command"],
+  "run": {"python": "agent_core.tools.commands:run_command"},
+  "preview": {"python": "agent_core.tools.commands:preview_command"}
+}

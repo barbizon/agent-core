@@ -1,0 +1,21 @@
+{
+  "name": "read_service_map",
+  "description": "Read the service map library (kept outside any session, in ~/.orwick/maps): which messages and calls connect a service with others. No service: list every map. A service: its docs, folder, related folders and question. A service and a name: that doc's Markdown. Read an existing map before updating it.",
+  "risk_level": "read",
+  "mode": "thread",
+  "timeout_seconds": 5,
+  "parameters": {
+    "service": {
+      "type": "string",
+      "description": "The map's name, e.g. orders or orders-refund; empty to list all"
+    },
+    "name": {
+      "type": "string",
+      "description": "A doc's name, e.g. messages; empty to list the map's docs"
+    }
+  },
+  "required": [],
+  "run": {
+    "python": "agent_core.tools.service_map:read_service_map"
+  }
+}

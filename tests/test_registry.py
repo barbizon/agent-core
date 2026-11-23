@@ -7,7 +7,7 @@ from agent_core.tools import build_registry
 from agent_core.tools.registry import ExecutionMode, ToolDefinition, ToolRegistry
 from tests import tool_fixtures as fx
 
-REPO_TOOLS = __import__("pathlib").Path(__file__).parents[1] / ".orvik" / "tools"
+REPO_TOOLS = __import__("pathlib").Path(__file__).parents[1] / "src" / "agent_core" / "tools" / "builtin"
 
 STR = {"type": "string", "description": "text"}
 
@@ -25,7 +25,10 @@ def test_empty_registry_describe():
 
 def test_default_registry_has_the_file_tools():
     registry = build_registry(REPO_TOOLS)
-    assert [t.name for t in registry.list_tools()] == ["list_folder", "read_file", "write_file"]
+    assert [t.name for t in registry.list_tools()] == [
+        "collect_review_comments", "edit_file", "grep", "list_folder", "read_file", "read_pull_request",
+        "read_review_comments", "read_service_map", "read_session_doc", "run_command",
+        "run_subagent", "save_analytics_report", "save_review_patterns", "use_skill", "write_file", "write_service_map", "write_session_doc", "write_session_docs"]
     assert registry.get("list_folder").risk_level == RiskLevel.READ
     assert registry.get("read_file").risk_level == RiskLevel.READ
     assert registry.get("write_file").risk_level == RiskLevel.WRITE

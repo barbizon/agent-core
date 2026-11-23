@@ -1,4 +1,4 @@
-.venv/
+.venv*/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -9,3 +9,9 @@ dist/
 build/
 *.egg-info/
 logs/
+_backup/
+
+# The Mac app (app/)
+.build/
+.swiftpm/
+.DS_Store

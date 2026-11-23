@@ -6,21 +6,22 @@ bounded by ``max_steps`` model calls. Tool results are size-capped and
 framed as untrusted data in the system prompt.
 """
 
+import itertools
 import json
 import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
 from agent_core.audit import AuditLogger, new_id
-from agent_core.debug import Tracer, summarize_messages
+from agent_core.debug import Tracer, conversation_counts
 from agent_core.errors import StepLimitExceeded
 from agent_core.gateway import ToolGateway
-from agent_core.llm import ChatModel, ToolCall
+from agent_core.llm import MAX_CALLS_PER_REPLY, ChatModel, ToolCall
 from agent_core.results import ToolResult
 from agent_core.tools.registry import ToolRegistry
 
 DEFAULT_SYSTEM_PROMPT = """\
-You are Orvik, a helpful assistant running inside an agent runtime.
+You are Orwick, a helpful assistant running inside an agent runtime.
 
 Rules:
 - Use tools only when they are needed to answer the user's request.
@@ -34,7 +35,9 @@ Rules:
 
 @dataclass(frozen=True)
 class AgentEvent:
-    kind: str  # "tool_call" | "tool_result"
+    # "model_request" / "model_response" (around each AI call), "tool_call" /
+    # "tool_result" (each tool), "step_done" (history complete again after a step)
+    kind: str
     data: dict[str, Any]
 
 
@@ -49,14 +52,14 @@ class Agent:
         gateway: ToolGateway,
         audit_logger: AuditLogger,
         max_steps: int = 10,
-        max_tool_result_chars: int = 8000,
+        max_tool_result_chars: int = 20_000,
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         on_event: EventCallback | None = None,
         tracer: Tracer | None = None,
     ) -> None:
         """Set up the agent with its model, tools, safety gateway and limits."""
-        if max_steps < 1:
-            raise ValueError("max_steps must be at least 1")
+        if max_steps < 0:
+            raise ValueError("max_steps must be 0 (no limit) or more")
         self.model = model
         self.registry = registry
         self.gateway = gateway
@@ -73,8 +76,16 @@ class Agent:
         """Clear the conversation, keeping only the system prompt."""
         self.messages = [{"role": "system", "content": self.system_prompt}]
 
-    def send(self, user_message: str) -> str:
-        """Send one user message and return the final answer (tools may run in between)."""
+    WRAP_UP_STEPS = 2   # this many steps before the limit, the AI is told to finish with what it has
+
+    def send(self, user_message: str, max_steps: int | None = None) -> str:
+        """Send one user message and return the final answer (tools may run in between).
+
+        ``max_steps`` overrides the limit for this message (e.g. a skill action that
+        needs more research). Near the limit the AI is told to wrap up, so it
+        saves and reports what it has instead of being cut off empty-handed.
+        """
+        limit = self.max_steps if max_steps is None else max_steps   # 0 = no limit
         run_id = new_id()
         started = time.monotonic()
 
@@ -83,26 +94,31 @@ class Agent:
             self.audit_logger.record(run_id, event_type, details)
 
         self.tracer.begin_request(user_message)
-        self.tracer.point("CLI → Agent · user input", user_message, "user")
+        self.tracer.point("You → Orwick · your message", user_message, "user")
         audit("agent.started", message=user_message)
         self.messages.append({"role": "user", "content": user_message})
         tools = self.registry.openai_schemas()
-        adapter = getattr(self.model, "label", type(self.model).__name__)
+        ai = getattr(self.model, "label", type(self.model).__name__).removesuffix(" adapter")
 
         try:
-            for step in range(1, self.max_steps + 1):
+            for step in itertools.count(1) if limit == 0 else range(1, limit + 1):
+                if limit and step == limit - self.WRAP_UP_STEPS + 1 and limit > self.WRAP_UP_STEPS:
+                    self.messages.append({"role": "user", "content": (
+                        f"[Orwick] Only {self.WRAP_UP_STEPS} steps are left for this message. Stop "
+                        "researching: save what you have now (mark anything unfinished as such) and "
+                        "give your final answer.")})
                 self.tracer.point(
-                    f"Agent · history sent to model ({len(self.messages)} messages)",
-                    summarize_messages(self.messages),
-                )
-                self.tracer.point(
-                    f"Agent → {adapter} · step {step} of max {self.max_steps}",
+                    f"Orwick · step {step} of max {limit or 'no limit'}: asking {ai}",
+                    f"conversation so far: {conversation_counts(self.messages)}\n"
                     "tools offered: "
                     + (", ".join(t["function"]["name"] for t in tools) or "(none)"),
-                    "input",
                 )
                 audit("model.requested", step=step)
-                response = self.model.complete(self.messages, tools)
+                self._emit("model_request", step=step)
+                try:
+                    response = self.model.complete(self.messages, tools)
+                finally:
+                    self._emit("model_response", step=step)
                 self.messages.append(response.to_message())
                 audit(
                     "model.responded",
@@ -112,30 +128,35 @@ class Agent:
 
                 if not response.tool_calls:
                     answer = response.text or ""
-                    self.tracer.point("Adapter → Agent · decision", f"final_answer: {answer}", "output")
+                    self.tracer.point(f"Orwick · what {ai} decided", f"final answer: {answer}", "output")
                     audit("agent.finished", steps=step)
                     self.tracer.point(
-                        "Agent → CLI · final answer",
+                        "Orwick → You · final answer",
                         f"{answer}\n\n({step} step(s), {time.monotonic() - started:.1f}s total)",
                         "answer",
                     )
                     return answer
 
                 self.tracer.point(
-                    "Adapter → Agent · decision",
+                    f"Orwick · what {ai} decided",
                     "\n".join(
-                        f"tool_call: {c.name} {c.arguments_json}   (id {c.id})"
+                        f"tool call: {c.name} {c.arguments_json}   (id {c.id})"
                         for c in response.tool_calls
                     ),
                     "output",
                 )
 
                 # Every tool_call_id must get a tool message, or the next API call fails.
-                for call in response.tool_calls:
-                    result = self._handle_tool_call(run_id, call)
+                for index, call in enumerate(response.tool_calls):
+                    if index >= MAX_CALLS_PER_REPLY:
+                        result = ToolResult.failure(
+                            "too_many_calls",
+                            f"Not run: at most {MAX_CALLS_PER_REPLY} calls per reply. Ask again in the next one.")
+                    else:
+                        result = self._handle_tool_call(run_id, call)
                     content = result.to_model_content(self.max_tool_result_chars)
                     self.tracer.point(
-                        f"Gateway → Agent · tool result (added to history for the model)",
+                        f"tool {call.name} → Orwick · result (sent to {ai} in the next step)",
                         content,
                         "tool" if result.ok else "error",
                     )
@@ -144,13 +165,14 @@ class Agent:
                         "tool_call_id": call.id,
                         "content": content,
                     })
+                self._emit("step_done", step=step)
 
             raise StepLimitExceeded(
-                f"Agent reached the step limit ({self.max_steps}) without a final answer"
+                f"Agent reached the step limit ({limit}) without a final answer"
             )
         except BaseException as exc:  # includes KeyboardInterrupt
             audit("agent.failed", error_type=type(exc).__name__, error=str(exc))
-            self.tracer.point(f"Agent → CLI · error ({type(exc).__name__})", str(exc), "error")
+            self.tracer.point(f"Orwick → You · error ({type(exc).__name__})", str(exc), "error")
             self._close_dangling_tool_calls()
             raise
 
@@ -184,7 +206,7 @@ class Agent:
 
         if not isinstance(arguments, dict):
             self.tracer.point(
-                "Agent · tool call rejected (arguments are not a JSON object)",
+                "Orwick · tool call rejected (arguments are not a JSON object)",
                 f"{call.name} {call.arguments_json}",
                 "error",
             )
@@ -196,8 +218,8 @@ class Agent:
             )
         else:
             self.tracer.point(
-                "Agent → Gateway · tool call",
-                f"{call.name} {json.dumps(arguments, ensure_ascii=False)}",
+                f"Orwick → tool {call.name} · call",
+                json.dumps(arguments, indent=2, ensure_ascii=False),
                 "tool",
             )
             result = self.gateway.execute(run_id, call.name, arguments)
@@ -207,6 +229,6 @@ class Agent:
         return result
 
     def _emit(self, kind: str, **data: Any) -> None:
-        """Tell the UI (if it is listening) about a tool call or its result."""
+        """Tell the UI (if it is listening) about the progress of a message."""
         if self.on_event is not None:
             self.on_event(AgentEvent(kind=kind, data=data))

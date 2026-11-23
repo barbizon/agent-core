@@ -67,7 +67,7 @@ def test_audit_redacts_secrets_and_writes_jsonl(tmp_path):
 
 def test_tool_result_is_truncated():
     content = ToolResult.success("x" * 1000).to_model_content(max_chars=120)
-    assert len(content) == 120 and content.endswith("[truncated]")
+    assert len(content) <= 120 and "[truncated]" in content and "characters not shown" in content
 
 
 def test_approvers_fail_closed():

@@ -1,0 +1,26 @@
+{
+  "name": "save_review_patterns",
+  "description": "Review analytics, step 3: record which pattern each comment belongs to. Patterns are suggestions kept in Orwick's own store: the user switches them on in the app before they affect any review, so this asks nothing. Counts are worked out for you; the list holds at most 30 patterns, and one left without comments is removed.",
+  "risk_level": "read",
+  "mode": "thread",
+  "timeout_seconds": 10,
+  "parameters": {
+    "groups": {
+      "type": "object",
+      "description": "{\"<comment id>\": \"<pattern id>\"} for every comment read; \"skip\" for one that teaches nothing"
+    },
+    "merge": {
+      "type": "object",
+      "description": "To shorten the list: {\"<pattern id>\": \"<pattern id to move all its comments to>\"}, or \"skip\" to drop a pattern that is not a general rule. A pattern left without comments disappears."
+    },
+    "patterns": {
+      "type": "array",
+      "items": {"type": "object"},
+      "description": "Patterns to add or reword: [{\"id\": \"error-without-context\", \"name\": \"Error returned without context\", \"rule\": \"one sentence: what the code must do\", \"detect\": \"how to spot it in a diff\", \"example\": \"the code that drew the comment → the fix\", \"item\": \"the code-check item it belongs to, e.g. E1, or empty\"}]"
+    }
+  },
+  "required": [],
+  "run": {
+    "python": "agent_core.tools.analytics:save_review_patterns"
+  }
+}

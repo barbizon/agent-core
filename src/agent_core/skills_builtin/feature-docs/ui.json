@@ -1,0 +1,31 @@
+{
+  "title": "Feature docs",
+  "hint": "Turn the session's ticket into the doc tabs below the terminal (Product Requirement, Flows, Technical Design, To Do, Code Review).",
+  "actions": [
+    {
+      "id": "read-ticket",
+      "label": "Read ticket",
+      "icon": "ticket",
+      "inputs": [
+        {
+          "name": "ticket",
+          "label": "Ticket ID (e.g. PROJ-16765)",
+          "pattern": "^[A-Za-z][A-Za-z0-9]+-[0-9]+$",
+          "uppercase": true
+        }
+      ],
+      "feature": "{ticket}",
+      "max_steps": 40,
+      "prompt": "Make the feature docs for {ticket}: read the ticket, analyze it, read the related code, and write the tabs.",
+      "hint": "Reads a ticket (with its parent and sibling stories) and the related code, then writes the feature doc tabs. Links this session to the ticket."
+    },
+    {
+      "id": "update-docs",
+      "label": "Update docs",
+      "icon": "arrow.clockwise",
+      "max_steps": 40,
+      "prompt": "Update this session's feature docs: re-read the ticket and the related code, and change only the tabs that need it.",
+      "hint": "Re-reads the ticket and the code and updates only the doc tabs that changed."
+    }
+  ]
+}

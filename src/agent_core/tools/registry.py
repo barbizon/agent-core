@@ -59,6 +59,9 @@ class ToolDefinition:
     execution_mode: ExecutionMode = ExecutionMode.THREAD
     timeout_seconds: float = 10.0
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy)
+    # Optional: returns a text preview of what the call would change (e.g. a diff),
+    # shown in the approval prompt. Called with the same arguments as `function`.
+    preview: ToolFunction | None = None
 
     def __post_init__(self) -> None:
         """Check the tool's safety rules; raise ValueError if one is broken."""

@@ -1,0 +1,29 @@
+{
+  "name": "read_pull_request",
+  "description": "Read a Bitbucket pull request (commands have no network; this does). Give pr (its link), or repo and branch to find the open pull request from that branch (found: false if there is none). Returns title, state, source and destination branch, the source commit and the changed files with their line counts. With file: that file's diff only (up to 16,000 characters).",
+  "risk_level": "read",
+  "mode": "thread",
+  "timeout_seconds": 60,
+  "parameters": {
+    "pr": {
+      "type": "string",
+      "description": "The pull request's link, e.g. https://bitbucket.org/acme/payments/pull-requests/12"
+    },
+    "repo": {
+      "type": "string",
+      "description": "Without a link: workspace/repo as in the origin URL, e.g. acme/payments"
+    },
+    "branch": {
+      "type": "string",
+      "description": "Without a link: the source branch, e.g. feature/PROJ-16765-limits"
+    },
+    "file": {
+      "type": "string",
+      "description": "A changed file's path, to get its diff; empty for the pull request and its file list"
+    }
+  },
+  "required": [],
+  "run": {
+    "python": "agent_core.tools.pull_request:read_pull_request"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "save_analytics_report",
+  "description": "Keep the latest report of an analytics (Markdown) in Orwick's own store (~/.orwick/analytics/<name>/report.md), where the app's Analytics screen shows it. The last step of running an analytics skill.",
+  "risk_level": "read",
+  "mode": "thread",
+  "timeout_seconds": 10,
+  "parameters": {
+    "analytics": {
+      "type": "string",
+      "description": "The analytics skill's name, e.g. slow-pull-requests"
+    },
+    "report": {
+      "type": "string",
+      "description": "The report in Markdown: a first line **Result:** with the answer in one sentence, then tables, then what they mean"
+    }
+  },
+  "required": ["analytics", "report"],
+  "run": {
+    "python": "agent_core.tools.analytics:save_analytics_report"
+  }
+}
