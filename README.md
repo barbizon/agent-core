@@ -566,3 +566,7 @@ Tools written in any language (not just Python) are planned.
 - **[ARCHITECTURE.md](docs/ARCHITECTURE.md):** how Orwick works inside (agent loop, safety pipeline, AI backends, tool format, tests)
 - **[ROADMAP.md](docs/ROADMAP.md):** what's built and what's next
 - **[app/README.md](app/README.md):** Orwick for Mac
+
+## License
+
+MIT. See [LICENSE](LICENSE).
