@@ -452,8 +452,11 @@ Orwick connects MCP servers the way other agents do. Put them in `mcpServers` in
 "tools": {"mcp__mcp-atlassian__jira_get_issue": true, "mcp__mcp-atlassian__jira_search": true}
 ```
 
-- `${NAME}` is filled from your environment, so tokens don't have to be in the file. They go only to
-  that server, never to the AI.
+- **Jira from the Mac app:** Settings → Tools → **Connect Jira…** asks for your site, email and API
+  token and writes all of this for you: the login into `~/.orwick/.env`, the server above, and the
+  read-only ticket and Confluence page tools switched on.
+- `${NAME}` is filled from your environment (or `~/.orwick/.env`), so tokens don't have to be in the
+  file. They go only to that server, never to the AI.
 - Tools are named `mcp__<server>__<tool>` and are **off until you switch them on** in `tools` (or with
   `/tools on <name>` for one session, or in the Mac app's Settings → Tools). A server is started only
   when one of its tools is on.

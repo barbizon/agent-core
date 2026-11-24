@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var mcpExpanded: Set<String> = []   // servers whose full tool list is shown
     @State private var askedOrwick = false
     @State private var asking = false
+    @State private var connectingJira = false
     @EnvironmentObject private var store: SessionStore
     @Environment(\.dismiss) private var dismiss
 
@@ -219,6 +220,19 @@ struct SettingsView: View {
                         .foregroundStyle(.orange)
                 }
             }
+            Section("🎫 Tickets") {
+                HStack {
+                    Text(JiraConnection.isConnected(config)
+                         ? "Jira is connected. Its tools are listed below under MCP."
+                         : "Connect Jira, so Orwick can read your tickets and the pages they link to.")
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button(JiraConnection.isConnected(config) ? "Change login…" : "Connect Jira…") {
+                        connectingJira = true
+                    }
+                }
+            }
             Section("🧰 Tools") {
                 if !askedOrwick {
                     // Until Orwick answers, only tools named in your settings or found in folders
@@ -274,6 +288,25 @@ struct SettingsView: View {
         .onAppear {
             askOrwick()
         }
+        .sheet(isPresented: $connectingJira) {
+            ConnectJiraSheet(connect: connectJira)
+        }
+    }
+
+    /// Saves the login and the settings at once, then asks Orwick again, so Jira's tools show up.
+    private func connectJira(site: String, email: String, token: String) -> String? {
+        do {
+            try JiraConnection.saveLogin(site: site, email: email, token: token)
+            let connected = JiraConnection.connected(config)
+            try connected.save(to: fileURL)
+            config = connected
+            saved = connected
+        } catch {
+            return "Couldn't save: \(error.localizedDescription)"
+        }
+        askedOrwick = false
+        askOrwick()
+        return nil
     }
 
     /// Asks Orwick once for its tools, MCP tools and skills (the Skills and Tools tabs share it).
