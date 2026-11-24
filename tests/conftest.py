@@ -105,7 +105,9 @@ def tool_lines_on():
 
 @pytest.fixture(autouse=True)
 def no_claude_skills(tmp_path, monkeypatch):
-    """Tests never see the skills in your ~/.claude/skills."""
+    """Tests never see your own skills or review analytics (~/.claude/skills, ~/.orwick)."""
     from agent_core import skills
+    from agent_core.tools import analytics
     monkeypatch.setattr(skills, "CLAUDE_SKILLS_DIR", tmp_path / "no-claude-skills")
     monkeypatch.setattr(skills, "USER_SKILLS_DIR", tmp_path / "no-skills-of-yours")
+    monkeypatch.setenv(analytics.ANALYTICS_DIR_ENV, str(tmp_path / "no-analytics-of-yours"))

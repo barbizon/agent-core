@@ -98,7 +98,7 @@ tools and saved sessions in **`.orwick/` inside it**.
 | `/resume <id>` | Continue a saved session (also: `orwick --resume <id>`); the whole conversation is shown again |
 | `/history` | Show this session's conversation again |
 | `/trace [on\|off]` | Show or hide the title line per tool call, e.g. `▸ Read app.py (lines 1–120)` (off: just a count after the answer; `/debug` shows full calls and results) |
-| `/feature [KEY\|off]` | Link the session to a Jira issue (also `orwick --feature PROJ-16765`) |
+| `/feature [KEY\|off]` | Link the session to a ticket (also `orwick --feature PROJ-16765`) |
 | `/name [text\|off]` | Show or set the session's name; `/sessions` and the app show it instead of the first message. Saved in the session's `name.txt` |
 | `/skills [on\|off <name>]` | The skills Orwick can load and which are on; switch one for this session only (saved in the session's `skills.json`; the app's Info panel checkboxes do the same). Mid-conversation the AI is told with your next message, so the conversation isn't sent again |
 | `/map [flow or topic] [--name <name>] [--with <folders>]` | Service map: the flows this service offers and how they connect (messages, receivers, calls); saved to `~/.orwick/maps/` |
@@ -345,7 +345,7 @@ Orwick**, so Orwick can't ask you or sandbox them. You choose per AI which ones 
 context: the AI always sees only a short index (name and one line each, about 400 tokens at most),
 and loads a skill's instructions with the read-only `use_skill` tool only when a task needs it.
 
-- Built in: **`feature-docs`**: turns the session's Jira ticket into Orwick's feature docs, five tabs
+- Built in: **`feature-docs`**: turns the session's ticket into Orwick's feature docs, five tabs
   kept in the session: **Product Requirement** (plain words), **Technical Design** (the ten numbered
   sections), **Flows** (which service and endpoint handles each step, with sequence diagrams),
   **To Do** (done / left / questions / execution plan / tasks per flow) and **Code Review**. It reads
@@ -428,7 +428,7 @@ and loads a skill's instructions with the read-only `use_skill` tool only when a
   read secret files there. Steps that need the network or Claude-only features still won't work.
 - `skills` setting switches them by name; `/skills` lists them. Skills add knowledge, not powers.
 
-**Features:** `/feature PROJ-16765` (or `orwick --feature PROJ-16765`) links the session to a Jira issue.
+**Features:** `/feature PROJ-16765` (or `orwick --feature PROJ-16765`) links the session to a ticket.
 The AI is told, the link is saved with the session, and `/sessions` shows it.
 
 **Session docs:** Markdown notes kept with the session in `.orwick/sessions/<id>/docs/`, through

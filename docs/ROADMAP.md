@@ -214,7 +214,7 @@ Add tools without changing the agent's code.
   Open question: respect a command tool's declared risk level, or always ask?
 - ⬜ Tool parameters for relevance, e.g. `sort_by` / `limit` on `list_folder`,
   so the AI asks only for what it needs (see the "smallest file" case).
-- ⬜ MCP: connect ready-made tool servers (Jira, databases, browsers).
+- ✅ MCP: connect ready-made tool servers (tickets, databases, browsers); local servers, see stage 17.
   Their tools still go through the safety gateway.
 
 ### 18. ⬜ Hooks

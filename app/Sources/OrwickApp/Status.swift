@@ -137,7 +137,7 @@ struct OrwickStatus: Decodable, Equatable {
     let skills: [String]?        // the skills that are on (older Orwick: null)
     let skillsAll: [SkillInfo]?  // every skill found, with on/off (older Orwick: null)
     let docs: [String]?          // this session's docs (names)
-    let feature: String?         // the Jira issue the session is linked to
+    let feature: String?         // the ticket the session is linked to
     let session: Counts
     let usage: [String: Usage]
 

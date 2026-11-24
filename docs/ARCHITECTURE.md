@@ -300,7 +300,7 @@ reach it through `ORWICK_SKILLS`. It isn't offered when no skill is on.
 with an id, a label, an SF Symbol icon, inputs (name, label, optional regex
 `pattern`, `uppercase`), an optional `max_steps` (1–100, for actions that
 research a lot), an optional `feature` template (links the session to
-that Jira key first) and a `prompt` (plain text, never a `/command`; may use only
+that ticket key first) and a `prompt` (plain text, never a `/command`; may use only
 declared inputs). A broken `ui.json` is a note; the skill still loads. `/do
 <skill> <action>` asks for each input in the terminal (three tries, Enter
 cancels), then sends the prompt as if typed. `status.json` lists the actions of
@@ -308,7 +308,7 @@ switched-on skills and a `state`: `working` is written just before the AI is
 asked, `waiting` before each prompt, so the Mac app enables its buttons only
 while Orwick waits for you.
 
-`/feature KEY` stores a Jira key in the session's `meta.json` and adds one line
+`/feature KEY` stores a ticket key in the session's `meta.json` and adds one line
 to the system prompt; resume restores it.
 
 Session docs live in `.orwick/sessions/<id>/docs/`; the CLI points
